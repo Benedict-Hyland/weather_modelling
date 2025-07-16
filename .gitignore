@@ -1,0 +1,12 @@
+# Ignore everything by default
+*
+
+# Keep these file types
+!*.sh
+!*.py
+!*.md
+!*.nix
+!.gitignore
+
+# Kepp all directories (so git can see inside them)
+!*/
