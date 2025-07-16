@@ -1,33 +1,10 @@
 #!/usr/bin/env bash
 
 # === ARGUMENTS ===
-if [ $# -ne 1 ]; then
-  echo "Usage: $0 <input.grib2>"
+if [ $# -ne 2 ]; then
+  echo "Usage: $0 <input.grib2> <output.grib2>"
   exit 1
 fi
-
-extract_parts() {
-  local __path=$1
-
-  # regex breakdown:
-  #  ^data/([0-9]{8})_([0-9]{2})/        → capture YYYYMMDD and HH
-  #  gfs\.t[0-9]{2}z\.                  → literal "gfs.tHHz."
-  #  (pgrb2b|pgrb2|sfluxgrb)             → capture one of the three types
-  #  [^/]*                               → any extra (e.g. ".0p25")
-  #  \.f([0-9]{3})                       → capture the 3‑digit period
-  #  (?:\.grib2)?$                       → optional ".grib2" at end
-  if [[ $__path =~ ^data/([0-9]{8})_([0-9]{2})/gfs\.t[0-9]{2}z\.((pgrb2b|pgrb2|sfluxgrb))[^/]*\.f([0-9]{3})(?:\.grib2)?$ ]]; then
-    # assign by name
-    printf -v "DATE"   '%s' "${BASH_REMATCH[1]}"
-    printf -v "HOUR"   '%s' "${BASH_REMATCH[2]}"
-    printf -v "LEVEL"   '%s' "${BASH_REMATCH[3]}"
-    printf -v "FORECAST" 'f%s' "${BASH_REMATCH[4]}"
-    return 0
-  else
-    return 1
-  fi
-}
-
 
 INPUT_FILE="$1"
 extract_parts $INPUT_FILE
