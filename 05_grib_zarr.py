@@ -5,16 +5,16 @@ import numpy as np
 import pandas as pd
 from datetime import timedelta
 
-def merge_nc_to_zarr(nc1_path, nc2_path, output_zarr):
-    # Open both NetCDF files
-    ds1 = xr.open_dataset(nc1_path)
-    ds2 = xr.open_dataset(nc2_path)
+def merge_grib_to_zarr(grib1_path, grib2_path, output_zarr):
+    # Open both GRIB files using cfgrib engine
+    ds1 = xr.open_dataset(grib1_path, engine='cfgrib')
+    ds2 = xr.open_dataset(grib2_path, engine='cfgrib')
 
     # Ensure they both have a time dimension
     if "time" not in ds1.dims and "time" not in ds1.coords:
-        raise ValueError(f"{nc1_path} has no time dimension/coordinate!")
+        raise ValueError(f"{grib1_path} has no time dimension/coordinate!")
     if "time" not in ds2.dims and "time" not in ds2.coords:
-        raise ValueError(f"{nc2_path} has no time dimension/coordinate!")
+        raise ValueError(f"{grib2_path} has no time dimension/coordinate!")
 
     # Get the first time in ds2 to calculate alignment
     first_time_ds2 = pd.to_datetime(ds2.time.values[0])
@@ -38,11 +38,11 @@ def merge_nc_to_zarr(nc1_path, nc2_path, output_zarr):
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print("Usage: merge_nc_to_zarr.py <file1.nc> <file2.nc> <output.zarr>")
+        print("Usage: 05_nc_zarr.py <file1.grib2> <file2.grib2> <output.zarr>")
         sys.exit(1)
 
-    nc1_path = sys.argv[1]
-    nc2_path = sys.argv[2]
+    grib1_path = sys.argv[1]
+    grib2_path = sys.argv[2]
     output_zarr = sys.argv[3]
 
-    merge_nc_to_zarr(nc1_path, nc2_path, output_zarr)
+    merge_grib_to_zarr(grib1_path, grib2_path, output_zarr)

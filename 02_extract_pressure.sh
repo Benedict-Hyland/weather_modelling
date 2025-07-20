@@ -7,9 +7,7 @@ if [ $# -ne 2 ]; then
 fi
 
 INPUT_FILE="$1"
-extract_parts $INPUT_FILE
-
-OUTPUT_FILE="${DATE}_${HOUR}_${FORECAST}_${LEVEL}
+OUTPUT_FILE="$2"
 
 # === CONFIGURATION ===
 levels=(1000 975 950 925 900 850 800 750 700 650 600 \

@@ -1,48 +1,93 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install with: sudo apt install inotify-tools
-# Monitors “closed after write” or “moved into” under ./data recursively
+# Requirements:
+#   sudo apt install inotify-tools
+# Monitors “close_write” or “moved_to” under ./data recursively
 
-inotifywait -m -r -e close_write,moved_to --format '%w%f' ./data \
-| while read -r fullpath; do
-    # strip off everything up to and including “data/”
-    rel=${fullpath#*data/}
-    echo "New file ready: data/$rel"
+DATA_DIR="./data"
+EXTRACT_DIR="./extraction_data"
 
-    extract_parts $rel
-    output_file="${DATE}_${HOUR}_${FORECAST}_${LEVEL}.grib2"
-
-    if $LEVEL="pgrb2"; do
-      02_extract_pressure.sh "./data/$rel" "./extraction_data/$output_file"
-    elif $LEVEL="pgrb2b"; do
-      03_extract_pressure.sh "./data/$rel" "./extraction_data/$output_file"
-    elif $LEVEL="sfluxgrb"; do
-      04_extract_surface.sh "./data/$rel" "./extraction_data/$output_file"
-    else;
-      echo "Error: ${LEVEL} not in set (pgrb2, pgrb2b, sfluxgrb)"
-    fi;
-
-  done
+# Ensure directories exist
+mkdir -p "$DATA_DIR" "$EXTRACT_DIR"
 
 extract_parts() {
-  local __path=$1
+  local path="$1"
 
-  # regex breakdown:
-  #  ^data/([0-9]{8})_([0-9]{2})/        → capture YYYYMMDD and HH
-  #  gfs\.t[0-9]{2}z\.                  → literal "gfs.tHHz."
-  #  (pgrb2b|pgrb2|sfluxgrb)             → capture one of the three types
-  #  [^/]*                               → any extra (e.g. ".0p25")
-  #  \.f([0-9]{3})                       → capture the 3‑digit period
-  #  (?:\.grib2)?$                       → optional ".grib2" at end
-  if [[ $__path =~ ^([0-9]{8})_([0-9]{2})/gfs\.t[0-9]{2}z\.((pgrb2b|pgrb2|sfluxgrb))[^/]*\.f([0-9]{3})(?:\.grib2)?$ ]]; then
-    # assign by name
-    printf -v "DATE"   '%s' "${BASH_REMATCH[1]}"
-    printf -v "HOUR"   '%s' "${BASH_REMATCH[2]}"
-    printf -v "LEVEL"   '%s' "${BASH_REMATCH[3]}"
-    printf -v "FORECAST" 'f%s' "${BASH_REMATCH[4]}"
+  # ---- 1) pgrb2b files (e.g. gfs.t00z.pgrb2b.0p25.f005[.grib2]) ----
+  if [[ "$path" =~ ^([0-9]{8})_([0-9]{2})/gfs\.t[0-9]{2}z\.pgrb2b([^/]*)\.f([0-9]{3})(\.grib2)?$ ]]; then
+    echo "[DEBUG] PGRB2B File Found: $path"
+    DATE="${BASH_REMATCH[1]}"
+    HOUR="${BASH_REMATCH[2]}"
+    LEVEL="pgrbb"
+    FORECAST="${BASH_REMATCH[4]}"
     return 0
-  else
-    return 1
   fi
+
+  # ---- 2) pgrb2 files (e.g. gfs.t00z.pgrb2.0p25.f005[.grib2]) ----
+  if [[ "$path" =~ ^([0-9]{8})_([0-9]{2})/gfs\.t[0-9]{2}z\.pgrb2([^/]*)\.f([0-9]{3})(\.grib2)?$ ]]; then
+    echo "[DEBUG] PGRB2 File Found: $path"
+    DATE="${BASH_REMATCH[1]}"
+    HOUR="${BASH_REMATCH[2]}"
+    LEVEL="pgrba"
+    FORECAST="${BASH_REMATCH[4]}"
+    return 0
+  fi
+
+
+  # ---- 3) sfluxgrb files (e.g. gfs.t00z.sfluxgrbf000.grib2) ----
+  if [[ "$path" =~ ^([0-9]{8})_([0-9]{2})/gfs\.t[0-9]{2}z\.(sfluxgrb)f([0-9]{3})(\.grib2)?$ ]]; then
+    echo "[DEBUG] SFLUXGRB File Found: $path"
+    DATE="${BASH_REMATCH[1]}"
+    HOUR="${BASH_REMATCH[2]}"
+    LEVEL="sfluxgrb"
+    FORECAST="${BASH_REMATCH[4]}"
+    return 0
+  fi
+
+  return 1
 }
+
+# Warn if extract scripts aren’t executable
+for script in ./02_extract_pressure.sh ./02_extract_pressure_b.sh ./02_extract_surface.sh; do
+  [[ -x "$script" ]] || echo "Warning: $script not found or not +x"
+done
+
+echo "[INFO] Watching $DATA_DIR for new files…"
+
+inotifywait -m -r -e close_write,moved_to --format '%w%f' "$DATA_DIR" \
+| while read -r fullpath; do
+    # strip leading “data/”
+    rel="${fullpath#"$DATA_DIR"/}"
+
+    echo "[INFO] New file detected: $rel"
+
+    if ! extract_parts "$rel"; then
+      echo "[WARN] Skipping unrecognized: $rel"
+      continue
+    fi
+
+    echo "[DEBUG] Parsed → DATE=$DATE HOUR=$HOUR LEVEL=$LEVEL FORECAST=$FORECAST"
+
+    input="$DATA_DIR/$rel"
+    output="$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_${LEVEL}.grib2"
+
+    case "$LEVEL" in
+      pgrba)
+        echo "[INFO] Extracting pressure → $output"
+        ./02_extract_pressure.sh "$input" "$output"
+        ;;
+      pgrbb)
+        echo "[INFO] Extracting pressure_b → $output"
+        ./02_extract_pressure_b.sh "$input" "$output"
+        ;;
+      sfluxgrb)
+        echo "[INFO] Extracting surface → $output"
+        ./02_extract_surface.sh "$input" "$output"
+        ;;
+      *)
+        # (should never happen)
+        echo "[ERROR] Unknown LEVEL='$LEVEL'"
+        ;;
+    esac
+done

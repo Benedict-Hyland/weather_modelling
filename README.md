@@ -9,9 +9,9 @@ This pipeline automates the entire workflow of weather data processing:
 1. **Data Collection**: Downloads latest GFS weather data from NOAA servers
 2. **File Monitoring**: Watches for new files and triggers processing
 3. **Data Extraction**: Extracts specific meteorological variables and pressure levels
-4. **File Merging**: Combines different data types (pressure, surface, flux) into unified datasets
-5. **Format Conversion**: Converts GRIB2 files to NetCDF format for analysis
-6. **Timestamp Matching**: Identifies and processes time-series pairs for temporal analysis
+4. **File Merging**: Combines different data types (pressure, surface, flux) into unified GRIB datasets
+5. **Timestamp Matching**: Identifies and processes time-series pairs from GRIB files for temporal analysis
+6. **Format Conversion**: Converts paired GRIB files directly to Zarr format for analysis
 
 ## 📁 File Structure
 
@@ -20,16 +20,17 @@ weather_modelling/
 ├── 00_pipeline.sh           # Master orchestration script
 ├── 01_collect_data.sh       # Downloads weather data from NOAA
 ├── 02_watch_data_dir.sh     # Monitors ./data for new files
-├── 03_watch_extract_dir.sh  # Monitors ./extraction_data
-├── 04_watch_merge_grib.sh   # Merges GRIB files and converts to NetCDF
-├── 05_merge_timestamps.sh   # Finds timestamp pairs for analysis
+├── 03_watch_extract_dir.sh  # Monitors ./extraction_data and merges GRIB files
+├── 04_merge_timestamps.sh   # Finds GRIB timestamp pairs and converts to Zarr
+├── 05_nc_zarr.py           # Converts paired GRIB files to Zarr format
 ├── 02_extract_pressure.sh   # Extracts pressure level variables
 ├── 02_extract_pressure_b.sh # Extracts additional pressure levels
 ├── 02_extract_surface.sh    # Extracts surface-level variables
 ├── data/                    # Raw downloaded weather data
 ├── extraction_data/         # Extracted/filtered GRIB files
-├── merged_data/             # Merged and converted NetCDF files
-├── timestamp_merged/        # Time-series matched files
+├── merged_data/             # Merged GRIB files
+├── timestamp_merged/        # Time-series matched GRIB files
+├── zarr_data/              # Final Zarr format files for analysis
 ├── logs/                    # Pipeline and script logs
 └── .pids/                   # Process ID tracking
 ```
@@ -66,26 +67,34 @@ weather_modelling/
   - Triggers appropriate extraction scripts based on file type
 - **File Pattern**: `YYYYMMDD_HH/gfs.tHHz.{pgrb2|pgrb2b|sfluxgrb}*.fFFF.grib2`
 
-#### `03_watch_extract_dir.sh` - Extraction Monitor
-- **Purpose**: Monitors `./extraction_data` for processed files
-- **Functions**: Currently watches extraction directory (implementation pending)
-
-#### `04_watch_merge_grib.sh` - File Merger
-- **Purpose**: Combines related GRIB files and converts to NetCDF
+#### `03_watch_extract_dir.sh` - GRIB File Merger
+- **Purpose**: Monitors `./extraction_data` and merges complete GRIB file sets
 - **Functions**:
-  - Waits for complete sets (pgrb2 + pgrb2b + sfluxgrb)
-  - Merges files using `wgrib2 -cat`
-  - Converts merged files to NetCDF using `cdo`
-  - Outputs to `./merged_data/`
-- **Output Pattern**: `YYYYMMDD_HH_fFFF_merged.nc`
-
-#### `05_merge_timestamps.sh` - Temporal Analyzer
-- **Purpose**: Identifies files from different runs with same forecast time
-- **Functions**:
-  - Finds NetCDF files exactly 6 hours apart
-  - Matches files with same forecast time (e.g., `20250708_18_f000` + `20250708_12_f000`)
-  - Extracts matching pairs to `./timestamp_merged/`
+  - Waits for complete sets (pgrb2 + pgrb2b + sfluxgrb) with matching date/hour/forecast
+  - Merges files using `wgrib2 -cat` command
+  - Outputs merged files to `./merged_data/`
   - Prevents duplicate processing
+- **Output Pattern**: `YYYYMMDD_HH_fFFF_merged.grib2`
+
+#### `04_merge_timestamps.sh` - Temporal Analyzer & Zarr Converter
+- **Purpose**: Identifies GRIB files from different runs and converts to Zarr
+- **Functions**:
+  - Finds merged GRIB files exactly 6 hours apart
+  - Matches files with same forecast time (e.g., `20250708_18_f000` + `20250708_12_f000`)
+  - Copies matching pairs to `./timestamp_merged/`
+  - Automatically converts pairs to Zarr format using `05_nc_zarr.py`
+  - Outputs final analysis-ready files to `./zarr_data/`
+- **Input Pattern**: `YYYYMMDD_HH_fFFF_merged.grib2`
+- **Output Pattern**: `YYYYMMDD_fFFF_HH1_HH2.zarr`
+
+#### `05_nc_zarr.py` - GRIB to Zarr Converter
+- **Purpose**: Converts paired GRIB files directly to Zarr format
+- **Functions**:
+  - Opens GRIB files using `cfgrib` engine
+  - Aligns timestamps for temporal analysis (6-hour offset)
+  - Merges datasets along time dimension
+  - Saves to Zarr format for efficient analysis
+- **Usage**: `python 05_nc_zarr.py <file1.grib2> <file2.grib2> <output.zarr>`
 
 ### Extraction Scripts
 
@@ -123,8 +132,8 @@ sudo apt install inotify-tools wget curl
 # Install wgrib2 (GRIB processing)
 sudo apt install wgrib2
 
-# Install CDO (Climate Data Operators)
-sudo apt install cdo
+# Install Python dependencies for GRIB to Zarr conversion
+pip install xarray cfgrib zarr pandas
 ```
 
 ### Running the Pipeline
@@ -158,13 +167,15 @@ NOAA GFS Data → 01_collect_data.sh → ./data/
                                       ↓
                               02_extract_*.sh → ./extraction_data/
                                                        ↓
-                                               04_watch_merge_grib.sh
+                                               03_watch_extract_dir.sh
+                                                       ↓ (merges pgrb2+pgrb2b+sfluxgrb)
+                                               ./merged_data/ (GRIB)
                                                        ↓
-                                               ./merged_data/ (NetCDF)
-                                                       ↓
-                                               05_merge_timestamps.sh
-                                                       ↓
-                                               ./timestamp_merged/
+                                               04_merge_timestamps.sh
+                                                       ↓ (finds 6hr pairs)
+                                               ./timestamp_merged/ (GRIB pairs)
+                                                       ↓ (auto-converts)
+                                               05_nc_zarr.py → ./zarr_data/ (analysis-ready)
 ```
 
 ## 🔍 Monitoring and Logs
@@ -215,7 +226,7 @@ NOAA GFS Data → 01_collect_data.sh → ./data/
 
 - **Check watcher status**: `./00_pipeline.sh status`
 - **Verify data downloads**: `ls -la ./data/`
-- **Check processing**: `ls -la ./merged_data/`
+- **Check processing**: `ls -la ./merged_data/ ./timestamp_merged/ ./zarr_data/`
 - **Monitor logs**: `tail -f ./logs/pipeline.log`
 
 ### Common Issues
@@ -223,7 +234,8 @@ NOAA GFS Data → 01_collect_data.sh → ./data/
 1. **Missing dependencies**:
    ```bash
    # Check installations
-   which wgrib2 cdo inotifywait
+   which wgrib2 inotifywait python
+   pip list | grep -E "(xarray|cfgrib|zarr|pandas)"
    ```
 
 2. **Permission errors**:
@@ -263,9 +275,9 @@ NOAA GFS Data → 01_collect_data.sh → ./data/
    - Add email alerts for failures
 
 2. **Data Analysis**:
-   - Use processed NetCDF files for weather analysis
+   - Use processed Zarr files for weather analysis
    - Implement time-series analysis on timestamp pairs
-   - Create visualization dashboards
+   - Create visualization dashboards with xarray and matplotlib
 
 3. **Scaling**:
    - Add more forecast hours (currently f000-f006)
