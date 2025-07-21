@@ -62,8 +62,10 @@ find_matching_pairs() {
                     # Check if exactly 6 hours apart
                     if [[ $hour_diff -eq 6 ]]; then
                         # Create a unique pair key (always put earlier hour first)
-                        local earlier_hour=$(( HOUR < current_hour ? HOUR : current_hour ))
-                        local later_hour=$(( HOUR > current_hour ? HOUR : current_hour ))
+                        local earlier_time=$(( HOUR < current_hour ? HOUR : current_hour ))
+                        local earlier_hour=$(printf "%02d" "$earlier_time")
+                        local later_time=$(( HOUR > current_hour ? HOUR : current_hour ))
+                        local later_hour=$((printf "%02d" "$later_time"))
                         local pair_key="${current_date}_${earlier_hour}_${later_hour}_f${current_forecast}"
                         
                         # Check if we've already processed this pair
