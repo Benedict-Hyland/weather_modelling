@@ -12,6 +12,7 @@ LOCKFILE="${PIDFILE_DIR}/pipeline.lock"
 
 WATCHERS=(
     "02_watch_data_dir.sh"
+    "03_watch_to_edit.sh"
 )
 
 LOG_ROTATE_SIZE=5242880 # 5MB

@@ -11,3 +11,7 @@
 
 # Kepp all directories (so git can see inside them)
 !*/
+
+.venv
+.claude
+.pids

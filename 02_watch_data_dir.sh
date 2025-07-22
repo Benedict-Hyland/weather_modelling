@@ -36,7 +36,7 @@ extract_parts() {
     HOUR="${BASH_REMATCH[2]}"
     LEVEL="b"
     FORECAST="${BASH_REMATCH[3]}"
-    cp $path "$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_pgrbb.grib2"
+    cp "$DATA_DIR/$path" "$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_pgrbb.grib2"
     return 0
   fi
 
@@ -46,7 +46,7 @@ extract_parts() {
     HOUR="${BASH_REMATCH[2]}"
     LEVEL="a"
     FORECAST="${BASH_REMATCH[3]}"
-    cp $path "$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_pgrba.grib2"
+    cp "$DATA_DIR/$path" "$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_pgrba.grib2"
     return 0
   fi
 
