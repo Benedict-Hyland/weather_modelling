@@ -7,8 +7,12 @@ from datetime import timedelta
 
 def merge_grib_to_zarr(grib1_path, grib2_path, output_zarr):
     # Open both GRIB files using cfgrib engine
-    ds1 = xr.open_dataset(grib1_path, engine='cfgrib')
-    ds2 = xr.open_dataset(grib2_path, engine='cfgrib')
+    ds1 = xr.open_dataset(grib1_path, engine='cfgrib', backend_kwargs={
+      "read_keys": ["shortName","typeOfLevel","level"]
+    })
+    ds2 = xr.open_dataset(grib2_path, engine='cfgrib', backend_kwargs={
+      "read_keys": ["shortName","typeOfLevel","level"]
+    })
 
     # Ensure they both have a time dimension
     if "time" not in ds1.dims and "time" not in ds1.coords:

@@ -6,13 +6,13 @@ DATA_DIR="./data"
 
 # Required files for each cycle
 REQUIRED_FILES=(
-    "gfs.t%Zz.pgrb2.0p25.f000"   "gfs.t%Zz.pgrb2b.0p25.f000"   "gfs.t%Zz.sfluxgrbf000.grib2"
-    "gfs.t%Zz.pgrb2.0p25.f001"   "gfs.t%Zz.pgrb2b.0p25.f001"   "gfs.t%Zz.sfluxgrbf001.grib2"
-    "gfs.t%Zz.pgrb2.0p25.f002"   "gfs.t%Zz.pgrb2b.0p25.f002"   "gfs.t%Zz.sfluxgrbf002.grib2"
-    "gfs.t%Zz.pgrb2.0p25.f003"   "gfs.t%Zz.pgrb2b.0p25.f003"   "gfs.t%Zz.sfluxgrbf003.grib2"
-    "gfs.t%Zz.pgrb2.0p25.f004"   "gfs.t%Zz.pgrb2b.0p25.f004"   "gfs.t%Zz.sfluxgrbf004.grib2"
-    "gfs.t%Zz.pgrb2.0p25.f005"   "gfs.t%Zz.pgrb2b.0p25.f005"   "gfs.t%Zz.sfluxgrbf005.grib2"
-    "gfs.t%Zz.pgrb2.0p25.f006"   "gfs.t%Zz.pgrb2b.0p25.f006"   "gfs.t%Zz.sfluxgrbf006.grib2"
+    "gfs.t%Zz.pgrb2.0p25.f000"   "gfs.t%Zz.pgrb2b.0p25.f000"
+    "gfs.t%Zz.pgrb2.0p25.f001"   "gfs.t%Zz.pgrb2b.0p25.f001"
+    "gfs.t%Zz.pgrb2.0p25.f002"   "gfs.t%Zz.pgrb2b.0p25.f002"
+    "gfs.t%Zz.pgrb2.0p25.f003"   "gfs.t%Zz.pgrb2b.0p25.f003"
+    "gfs.t%Zz.pgrb2.0p25.f004"   "gfs.t%Zz.pgrb2b.0p25.f004"
+    "gfs.t%Zz.pgrb2.0p25.f005"   "gfs.t%Zz.pgrb2b.0p25.f005"
+    "gfs.t%Zz.pgrb2.0p25.f006"   "gfs.t%Zz.pgrb2b.0p25.f006"
 )
 
 mkdir -p "$DATA_DIR"

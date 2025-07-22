@@ -22,16 +22,21 @@ weather_modelling/
 ├── 02_watch_data_dir.sh     # Monitors ./data for new files
 ├── 03_watch_extract_dir.sh  # Monitors ./extraction_data and merges GRIB files
 ├── 04_merge_timestamps.sh   # Finds GRIB timestamp pairs and converts to Zarr
-├── 05_nc_zarr.py           # Converts paired GRIB files to Zarr format
+├── 05_grib_zarr.py         # Legacy GRIB to Zarr converter (deprecated)
+├── 05_zarr.py              # New GRIB to Zarr converter with cfgrib
 ├── 02_extract_pressure.sh   # Extracts pressure level variables
 ├── 02_extract_pressure_b.sh # Extracts additional pressure levels
 ├── 02_extract_surface.sh    # Extracts surface-level variables
 ├── data/                    # Raw downloaded weather data
 ├── extraction_data/         # Extracted/filtered GRIB files
 ├── merged_data/             # Merged GRIB files
-├── timestamp_merged/        # Time-series matched GRIB files
-├── zarr_data/              # Final Zarr format files for analysis
+├── timestamp_merged/        # Time-series matched GRIB files (deprecated)
+├── output.zarr/             # Final Zarr format files for analysis
 ├── logs/                    # Pipeline and script logs
+├── old_code/                # Archived/deprecated scripts
+├── pyproject.toml           # Python project dependencies (uv package manager)
+├── uv.lock                  # Locked Python dependencies
+├── main.py                  # Python entry point
 └── .pids/                   # Process ID tracking
 ```
 
@@ -82,19 +87,24 @@ weather_modelling/
   - Finds merged GRIB files exactly 6 hours apart
   - Matches files with same forecast time (e.g., `20250708_18_f000` + `20250708_12_f000`)
   - Copies matching pairs to `./timestamp_merged/`
-  - Automatically converts pairs to Zarr format using `05_nc_zarr.py`
-  - Outputs final analysis-ready files to `./zarr_data/`
+  - Automatically converts pairs to Zarr format using `05_zarr.py`
+  - Outputs final analysis-ready files to `./output.zarr/`
 - **Input Pattern**: `YYYYMMDD_HH_fFFF_merged.grib2`
 - **Output Pattern**: `YYYYMMDD_fFFF_HH1_HH2.zarr`
 
-#### `05_nc_zarr.py` - GRIB to Zarr Converter
-- **Purpose**: Converts paired GRIB files directly to Zarr format
+#### `05_zarr.py` - GRIB to Zarr Converter
+- **Purpose**: Converts paired GRIB files directly to Zarr format using modern cfgrib backend
 - **Functions**:
-  - Opens GRIB files using `cfgrib` engine
-  - Aligns timestamps for temporal analysis (6-hour offset)
-  - Merges datasets along time dimension
-  - Saves to Zarr format for efficient analysis
-- **Usage**: `python 05_nc_zarr.py <file1.grib2> <file2.grib2> <output.zarr>`
+  - Opens GRIB files using `cfgrib` engine with multi-index support
+  - Automatically parses cycle times from filenames
+  - Aligns timestamps for temporal analysis (enforces 6-hour offset)
+  - Concatenates datasets along time dimension
+  - Saves to Zarr format for efficient analysis with coordinate preservation
+- **Usage**: `python 05_zarr.py <file1.grib2> <file2.grib2> <output.zarr>`
+- **Features**: 
+  - Handles coordinate collisions with multi-index
+  - Preserves typeOfLevel and level dimensions
+  - Automatic time sorting and validation
 
 ### Extraction Scripts
 
@@ -131,10 +141,29 @@ sudo apt install inotify-tools wget curl
 
 # Install wgrib2 (GRIB processing)
 sudo apt install wgrib2
-
-# Install Python dependencies for GRIB to Zarr conversion
-pip install xarray cfgrib zarr pandas
 ```
+
+### Python Environment Setup
+
+This project uses `uv` for fast Python package management:
+
+```bash
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies from pyproject.toml
+uv sync
+
+# Activate virtual environment
+source .venv/bin/activate
+```
+
+**Dependencies (managed via pyproject.toml)**:
+- `cfgrib>=0.9.15.0` - GRIB file reading
+- `xarray>=2025.7.1` - Multi-dimensional arrays
+- `numpy>=2.3.1` - Numerical computing
+- `pandas>=2.3.1` - Data manipulation
+- `zarr>=3.1.0` - Chunked array storage
 
 ### Running the Pipeline
 
@@ -175,7 +204,7 @@ NOAA GFS Data → 01_collect_data.sh → ./data/
                                                        ↓ (finds 6hr pairs)
                                                ./timestamp_merged/ (GRIB pairs)
                                                        ↓ (auto-converts)
-                                               05_nc_zarr.py → ./zarr_data/ (analysis-ready)
+                                               05_zarr.py → ./output.zarr/ (analysis-ready)
 ```
 
 ## 🔍 Monitoring and Logs
@@ -226,7 +255,7 @@ NOAA GFS Data → 01_collect_data.sh → ./data/
 
 - **Check watcher status**: `./00_pipeline.sh status`
 - **Verify data downloads**: `ls -la ./data/`
-- **Check processing**: `ls -la ./merged_data/ ./timestamp_merged/ ./zarr_data/`
+- **Check processing**: `ls -la ./merged_data/ ./timestamp_merged/ ./output.zarr/`
 - **Monitor logs**: `tail -f ./logs/pipeline.log`
 
 ### Common Issues
@@ -235,7 +264,7 @@ NOAA GFS Data → 01_collect_data.sh → ./data/
    ```bash
    # Check installations
    which wgrib2 inotifywait python
-   pip list | grep -E "(xarray|cfgrib|zarr|pandas)"
+   uv run python -c "import xarray, cfgrib, zarr, pandas; print('✅ All Python deps available')"
    ```
 
 2. **Permission errors**:
@@ -275,9 +304,11 @@ NOAA GFS Data → 01_collect_data.sh → ./data/
    - Add email alerts for failures
 
 2. **Data Analysis**:
-   - Use processed Zarr files for weather analysis
-   - Implement time-series analysis on timestamp pairs
+   - Use processed Zarr files in `./output.zarr/` for weather analysis
+   - Leverage multi-dimensional xarray datasets with preserved coordinates
+   - Implement time-series analysis on 6-hour forecast pairs
    - Create visualization dashboards with xarray and matplotlib
+   - Take advantage of Zarr's chunked storage for efficient large-dataset processing
 
 3. **Scaling**:
    - Add more forecast hours (currently f000-f006)

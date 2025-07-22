@@ -12,8 +12,6 @@ LOCKFILE="${PIDFILE_DIR}/pipeline.lock"
 
 WATCHERS=(
     "02_watch_data_dir.sh"
-    "03_watch_extract_dir.sh"
-    "04_merge_timestamps.sh"
 )
 
 LOG_ROTATE_SIZE=5242880 # 5MB
@@ -26,7 +24,6 @@ DATA_COLLECTION_INTERVAL=1800 # 30 mins
 mkdir -p "$PIDFILE_DIR" "$LOG_DIR"
 mkdir -p ./data
 mkdir -p ./extraction_data
-mkdir -p ./merged_data
 
 ############################################
 # LOGGING FUNCTIONS
