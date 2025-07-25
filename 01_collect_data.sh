@@ -94,9 +94,17 @@ LATEST="${CYCLE_DATE}${CYCLE_HOUR}"
 
 echo "🌐 Latest cycle: $LATEST"
 
-# prev‑6h and prev‑12h
-PREV1=$(date -u -d "${LATEST:0:8} ${LATEST:8:2} -6 hours" +%Y%m%d%H)
-PREV2=$(date -u -d "${LATEST:0:8} ${LATEST:8:2} -12 hours" +%Y%m%d%H)
+# I changed this as going forwards I want to download the latest data
+# And then predict models on that, giving me 6-12 hours to create models
+# Rather than predicting the next 6 hours
+# This will be running off the same data but I am further ahead
+# Therefore, I will be able to create more models
+# After the first 6 hour block, the models will be aligned
+# I will just need to use the last predicitons to show the current ones
+# It was easier to change 6, 12 hours to 0, 6 hours than update code
+# prev‑0h and prev‑6h
+PREV1=$(date -u -d "${LATEST:0:8} ${LATEST:8:2} -0 hours" +%Y%m%d%H)
+PREV2=$(date -u -d "${LATEST:0:8} ${LATEST:8:2} -6 hours" +%Y%m%d%H)
 
 PREV1_DATE=${PREV1:0:8}; PREV1_HOUR=${PREV1:8:2}
 PREV2_DATE=${PREV2:0:8}; PREV2_HOUR=${PREV2:8:2}
