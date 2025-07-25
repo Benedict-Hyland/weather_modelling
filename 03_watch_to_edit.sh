@@ -31,7 +31,7 @@ tail -n0 -F "$OUTPUT_FILE" | while read -r line; do
   previous_line=$(echo "$line" | cut -d',' -f2 | xargs)
 
   echo "[INFO] Running: $PROCESS_SCRIPT $current_line $previous_line"
-  if "$PROCESS_SCRIPT" "$current_line" "$previous_line"; then
+  if uv run "$PROCESS_SCRIPT" "$current_line" "$previous_line"; then
       echo "[SUCCESS] Finished processing → $current_line"
 
       # Append to finished_edits.txt
