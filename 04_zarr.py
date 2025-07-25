@@ -91,9 +91,42 @@ def open_land_mask(file: str) -> xr.Dataset:
                 "typeOfLevel": "surface",
             },
             "read_keys": ["shortName", "typeOfLevel"]
+            "indexpath": ""
         }
     )
-    return ds
+    return ds.rename({"surface": "surfaceLevel"})
+
+def open_surface_geopotential(file: str) -> xr.Dataset:
+    """Open geopotential height at the surface (model orography)"""
+    ds = xr.open_dataset(
+        file,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {
+                "shortName": "hgt",    # GRIB short name for geopotential height
+                "typeOfLevel": "surface"
+            },
+            "read_keys": ["shortName", "typeOfLevel"],
+            "indexpath": ""
+        }
+    )
+    return ds.rename({"surface": "surface_level"})
+
+def open_surface_solar_radiation(file: str) -> xr.Dataset:
+    """Open downward shortwave radiation flux at the surface"""
+    ds = xr.open_dataset(
+        file,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {
+                "shortName": "dswrf",  # GRIB short name for downward shortwave
+                "typeOfLevel": "surface"
+            },
+            "read_keys": ["shortName", "typeOfLevel"],
+            "indexpath": ""
+        }
+    )
+    return ds.rename({"surface": "surface_level"})
 
 
 # ======================
@@ -151,6 +184,14 @@ def merge_forecast_step(files_dict: dict) -> xr.Dataset:
         land_mask = open_land_mask(files_dict["pgrb2"])
         validate_dataset(land_mask, "land/sea mask")
         ds_list.append(land_mask)
+
+        surface_geopotential = open_surface_geopotential(files_dict["pgrb2"])
+        validate_dataset(surface_geopotential, "surface geopotential")
+        ds_list.append(surface_geopotential)
+
+        surface_solar_radiation = open_surface_solar_radiation(files_dict["pgrb2"])
+        validate_dataset(surface_solar_radiation, "surface solar radiation")
+        ds_list.append(surface_solar_radiation)
 
     if "pgrb2b" in files_dict:
         print(f"  Processing pgrb2b → {files_dict['pgrb2b']}")
