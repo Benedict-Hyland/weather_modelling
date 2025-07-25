@@ -80,6 +80,21 @@ def open_surface_10m(file: str) -> xr.Dataset:
     )
     return ds.rename({"heightAboveGround": "heightAboveGround_10m"})
 
+def open_land_mask(file: str) -> xr.Dataset:
+    """Open Land/Sea mask dataset"""
+    ds = xr.open_dataset(
+        file,
+        engine="cfgrib",
+        backend_kwargs={
+            "filter_by_keys": {
+                "shortName": ["land"],
+                "typeOfLevel": "surface",
+            },
+            "read_keys": ["shortName", "typeOfLevel"]
+        }
+    )
+    return ds
+
 
 # ======================
 # File discovery helpers
@@ -132,6 +147,10 @@ def merge_forecast_step(files_dict: dict) -> xr.Dataset:
         surface_10m = open_surface_10m(files_dict["pgrb2"])
         validate_dataset(surface_10m, "surface_10m")
         ds_list.append(surface_10m)
+
+        land_mask = open_land_mask(files_dict["pgrb2"])
+        validate_dataset(land_mask, "land/sea mask")
+        ds_list.append(land_mask)
 
     if "pgrb2b" in files_dict:
         print(f"  Processing pgrb2b → {files_dict['pgrb2b']}")
