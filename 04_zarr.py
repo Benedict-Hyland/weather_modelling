@@ -90,7 +90,7 @@ def open_land_mask(file: str) -> xr.Dataset:
                 "shortName": ["land"],
                 "typeOfLevel": "surface",
             },
-            "read_keys": ["shortName", "typeOfLevel"]
+            "read_keys": ["shortName", "typeOfLevel"],
             "indexpath": ""
         }
     )
