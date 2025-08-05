@@ -36,7 +36,8 @@ extract_parts() {
     HOUR="${BASH_REMATCH[2]}"
     LEVEL="b"
     FORECAST="${BASH_REMATCH[3]}"
-    cp "$DATA_DIR/$path" "$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_pgrbb.grib2"
+    # Create symbolic link instead of copying to save disk I/O (efficiency improvement)
+    ln -sf "$(realpath "$DATA_DIR/$path")" "$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_pgrbb.grib2"
     return 0
   fi
 
@@ -46,7 +47,8 @@ extract_parts() {
     HOUR="${BASH_REMATCH[2]}"
     LEVEL="a"
     FORECAST="${BASH_REMATCH[3]}"
-    cp "$DATA_DIR/$path" "$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_pgrba.grib2"
+    # Create symbolic link instead of copying to save disk I/O (efficiency improvement)
+    ln -sf "$(realpath "$DATA_DIR/$path")" "$EXTRACT_DIR/${DATE}_${HOUR}_${FORECAST}_pgrba.grib2"
     return 0
   fi
 
