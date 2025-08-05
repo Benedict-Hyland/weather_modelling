@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE_URL="https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
+NTFY_TOPIC="GFS_Forecast_NCEP"
 DATA_DIR="./data"
 
 # Required files for each cycle
@@ -37,6 +38,14 @@ latest_subcycle() {
 already_downloaded() {
   local date=$1 hour=$2 filename=$3
   [[ -f "$DATA_DIR/${date}_${hour}/$filename" ]]
+}
+
+notify() {
+    local DATE=$1 HOUR=$2
+    curl -s -X POST "https://ntfy.sh/$NTFY_TOPIC" \
+         -H "Title: GFS ${DATE}_${HOUR} ready" \
+         -H "Tags: cloud-download" \
+         -d "GFS data for ${DATE}_${HOUR} is now downloaded and ready."
 }
 
 # --- Function: Download a given cycle (YYYYMMDD + HH) ---
@@ -84,6 +93,7 @@ download_cycle() {
     fi
   done
 
+  notify "$DATE" "$HOUR"
   echo "✅ Done cycle ${DATE}_${HOUR}"
 }
 

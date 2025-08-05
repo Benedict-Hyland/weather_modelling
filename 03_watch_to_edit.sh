@@ -27,8 +27,8 @@ tail -n0 -F "$OUTPUT_FILE" | while read -r line; do
   echo "[INFO] Detected new line: $line"
 
   # Parse: e.g. "20250720_06_f004, 20250720_00_f004"
-  current_line=$(echo "$line" | cut -d',' -f1 | xargs)
-  previous_line=$(echo "$line" | cut -d',' -f2 | xargs)
+  previous_line=$(echo "$line" | cut -d',' -f1 | xargs)
+  current_line=$(echo "$line" | cut -d',' -f2 | xargs)
 
   echo "[INFO] Running: $PROCESS_SCRIPT $current_line $previous_line"
   if uv run "$PROCESS_SCRIPT" "$current_line" "$previous_line"; then
