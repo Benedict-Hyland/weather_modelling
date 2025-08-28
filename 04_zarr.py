@@ -1,15 +1,9 @@
 #!/usr/bin/env python
 import sys
+import argparse
 from pathlib import Path
 import xarray as xr
 import time
-
-# ======================
-# Directory configuration
-# ======================
-DATA_DIR = Path("./extraction_data")
-OUTPUT_DIR = Path("./outputs")
-OUTPUT_DIR.mkdir(exist_ok=True)
 
 # ======================
 # Specialized open funcs
@@ -27,7 +21,8 @@ def open_isobaric_ds1(file: str) -> xr.Dataset:
             },
             "read_keys": ["shortName", "typeOfLevel", "levels"],
             "indexpath": ""
-        }
+        },
+        decode_timedelta=True
     )
 
 def open_isobaric_ds2(file: str) -> xr.Dataset:
@@ -43,7 +38,8 @@ def open_isobaric_ds2(file: str) -> xr.Dataset:
             },
             "read_keys": ["shortName", "typeOfLevel", "levels"],
             "indexpath": ""
-        }
+        },
+        decode_timedelta=True
     )
 
 def open_surface_2m(file: str) -> xr.Dataset:
@@ -52,14 +48,11 @@ def open_surface_2m(file: str) -> xr.Dataset:
         file,
         engine="cfgrib",
         backend_kwargs={
-            "filter_by_keys": {
-                "shortName": ["2t"],
-                "typeOfLevel": "heightAboveGround",
-                "level": 2
-            },
+            "filter_by_keys": {"shortName": ["2t"], "typeOfLevel": "heightAboveGround", "level": 2},
             "read_keys": ["shortName", "typeOfLevel", "levels"],
             "indexpath": ""
-        }
+        },
+        decode_timedelta=True
     )
     return ds.rename({"heightAboveGround": "heightAboveGround_2m"})
 
@@ -69,14 +62,11 @@ def open_surface_10m(file: str) -> xr.Dataset:
         file,
         engine="cfgrib",
         backend_kwargs={
-            "filter_by_keys": {
-                "shortName": ["10u", "10v"],
-                "typeOfLevel": "heightAboveGround",
-                "level": 10
-            },
+            "filter_by_keys": {"shortName": ["10u", "10v"], "typeOfLevel": "heightAboveGround", "level": 10},
             "read_keys": ["shortName", "typeOfLevel", "levels"],
             "indexpath": ""
-        }
+        },
+        decode_timedelta=True
     )
     return ds.rename({"heightAboveGround": "heightAboveGround_10m"})
 
@@ -86,13 +76,11 @@ def open_land_mask(file: str) -> xr.Dataset:
         file,
         engine="cfgrib",
         backend_kwargs={
-            "filter_by_keys": {
-                "shortName": ["land"],
-                "typeOfLevel": "surface",
-            },
+            "filter_by_keys": {"shortName": "lsm", "typeOfLevel": "surface"},
             "read_keys": ["shortName", "typeOfLevel"],
             "indexpath": ""
-        }
+        },
+        decode_timedelta=True
     )
     return ds.rename({"surface": "surfaceLevel"})
 
@@ -102,13 +90,11 @@ def open_surface_geopotential(file: str) -> xr.Dataset:
         file,
         engine="cfgrib",
         backend_kwargs={
-            "filter_by_keys": {
-                "shortName": "hgt",    # GRIB short name for geopotential height
-                "typeOfLevel": "surface"
-            },
+            "filter_by_keys": {"shortName": "orog", "typeOfLevel": "surface"},
             "read_keys": ["shortName", "typeOfLevel"],
             "indexpath": ""
-        }
+        },
+        decode_timedelta=True
     )
     return ds.rename({"surface": "surface_level"})
 
@@ -118,13 +104,11 @@ def open_surface_solar_radiation(file: str) -> xr.Dataset:
         file,
         engine="cfgrib",
         backend_kwargs={
-            "filter_by_keys": {
-                "shortName": "dswrf",  # GRIB short name for downward shortwave
-                "typeOfLevel": "surface"
-            },
+            "filter_by_keys": {"shortName": "fsr", "typeOfLevel": "surface"},
             "read_keys": ["shortName", "typeOfLevel"],
             "indexpath": ""
-        }
+        },
+        decode_timedelta=True
     )
     return ds.rename({"surface": "surface_level"})
 
@@ -133,22 +117,54 @@ def open_surface_solar_radiation(file: str) -> xr.Dataset:
 # File discovery helpers
 # ======================
 
-def find_forecast_files(key: str):
+def _candidates_for_prefix(prefix_dir: Path, prefix_stem: str):
+    """Build candidate paths for a given directory and key/prefix stem."""
+    a = prefix_dir / f"{prefix_stem}_pgrba.grib2"
+    b = prefix_dir / f"{prefix_stem}_pgrbb.grib2"
+    return a, b
+
+def find_forecast_files(key_or_path: str, search_dirs: list[Path]) -> dict:
     """
-    Given a key like '20250720_06_004', find the pgrb2 (pgrba) and pgrb2b (pgrbb).
-    Returns dict like:
-    {
-        "pgrb2": Path(...),
-        "pgrb2b": Path(...)
-    }
+    Resolve files for a forecast 'key' like '20250720_06_004' OR a path/prefix.
+
+    Rules:
+    - If key_or_path is an existing .grib2 file, look for its sibling matching
+      the other part (pgrba/pgrbb) and return both if present.
+    - If key_or_path includes directories but not a suffix, treat it as a prefix
+      directory + stem and build candidates there.
+    - Otherwise, search each directory in search_dirs for {key}_pgrba.grib2 and {key}_pgrbb.grib2.
     """
-    files = {}
-    pgrba = DATA_DIR / f"{key}_pgrba.grib2"
-    pgrbb = DATA_DIR / f"{key}_pgrbb.grib2"
-    if pgrba.exists():
-        files["pgrb2"] = pgrba
-    if pgrbb.exists():
-        files["pgrb2b"] = pgrbb
+    files: dict[str, Path] = {}
+
+    p = Path(key_or_path)
+    if p.suffix == ".grib2" and p.exists():
+        name = p.name
+        stem = name.replace("_pgrba.grib2", "").replace("_pgrbb.grib2", "")
+        cand_a, cand_b = _candidates_for_prefix(p.parent, stem)
+        if cand_a.exists():
+            files["pgrb2"] = cand_a
+        if cand_b.exists():
+            files["pgrb2b"] = cand_b
+        return files
+
+    # If it includes a directory, search only there
+    if p.parent != Path(".") and p.parent.exists() and p.name:
+        cand_a, cand_b = _candidates_for_prefix(p.parent, p.name)
+        if cand_a.exists():
+            files["pgrb2"] = cand_a
+        if cand_b.exists():
+            files["pgrb2b"] = cand_b
+        return files
+
+    # Otherwise search provided search_dirs
+    for d in search_dirs:
+        cand_a, cand_b = _candidates_for_prefix(d, key_or_path)
+        if cand_a.exists():
+            files["pgrb2"] = cand_a
+        if cand_b.exists():
+            files["pgrb2b"] = cand_b
+        if files:
+            break
     return files
 
 def validate_dataset(ds: xr.Dataset, name: str):
@@ -168,7 +184,7 @@ def merge_forecast_step(files_dict: dict) -> xr.Dataset:
     ds_list = []
 
     if "pgrb2" in files_dict:
-        print(f"  Processing pgrb2 → {files_dict['pgrb2']}")
+        print(f"  Processing pgrb2 -> {files_dict['pgrb2']}")
         iso_ds1 = open_isobaric_ds1(files_dict["pgrb2"])
         validate_dataset(iso_ds1, "isobaric_ds1")
         ds_list.append(iso_ds1)
@@ -194,7 +210,7 @@ def merge_forecast_step(files_dict: dict) -> xr.Dataset:
         ds_list.append(surface_solar_radiation)
 
     if "pgrb2b" in files_dict:
-        print(f"  Processing pgrb2b → {files_dict['pgrb2b']}")
+        print(f"  Processing pgrb2b -> {files_dict['pgrb2b']}")
         iso_ds2 = open_isobaric_ds2(files_dict["pgrb2b"])
         validate_dataset(iso_ds2, "isobaric_ds2")
         ds_list.append(iso_ds2)
@@ -209,24 +225,23 @@ def merge_forecast_step(files_dict: dict) -> xr.Dataset:
 # Two-forecast merge
 # ======================
 
-def process_two_forecasts(key1: str, key2: str):
+def process_two_forecasts(key1: str, key2: str, search_dirs: list[Path], output_dir: Path):
     """
-    Process two forecast keys (e.g. 20250720_06_004 + 20250720_12_004)
-    and save concatenated Zarr.
+    Process two forecast keys/paths (e.g. 20250720_06_004 + 20250720_12_004)
+    and save concatenated Zarr into output_dir.
     """
-    print(f"🔍 Looking for forecast files for {key1} + {key2}")
+    print(f"🔍 Resolving forecast files for {key1} and {key2}")
+    files1 = find_forecast_files(key1, search_dirs)
+    files2 = find_forecast_files(key2, search_dirs)
 
-    # Get required files
-    files1 = find_forecast_files(key1)
-    files2 = find_forecast_files(key2)
-
-    # Require at least pgrb2 for both
+    missing = []
     if "pgrb2" not in files1:
-        sys.exit(f"❌ Missing pgrb2 for {key1}")
+        missing.append(f"pgrb2 for {key1}")
     if "pgrb2" not in files2:
-        sys.exit(f"❌ Missing pgrb2 for {key2}")
+        missing.append(f"pgrb2 for {key2}")
+    if missing:
+        raise FileNotFoundError("Missing required files: " + ", ".join(missing))
 
-    # Merge each time step
     print(f"✅ Merging forecast step {key1}")
     ds1 = merge_forecast_step(files1)
     print(f"✅ Merging forecast step {key2}")
@@ -236,27 +251,50 @@ def process_two_forecasts(key1: str, key2: str):
     ds1 = ds1.expand_dims(time=[0])
     ds2 = ds2.expand_dims(time=[1])
 
-    # Concatenate along time
     combined = xr.concat([ds1, ds2], dim="time")
 
     # Save Zarr
-    out_path = OUTPUT_DIR / f"{key1}_output.zarr"
-    print(f"💾 Saving to Zarr → {out_path}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    # Use a neutral stem for filename (strip directories/suffixes if paths were passed)
+    stem1 = Path(key1).stem.replace("_pgrba", "").replace("_pgrbb", "")
+    out_path = output_dir / f"{stem1}_output.zarr"
+    out_path_nc = output_dir / f"{stem1}_output.nc"
+    print(f"💾 Saving to Zarr -> {out_path}")
     combined.to_zarr(out_path, mode="w")
-    print(f"✅ Done: {out_path}")
+    print(f"💾 Saving to NetCDF -> {out_path_nc}")
+    combined.to_netcdf(out_path_nc, mode="w")
+    print(f"✅ Done. Files saved to: {stem1}_output")
 
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Merge two forecast steps (GRIB) into a small Zarr time series."
+    )
+    p.add_argument("key1", help="Forecast key or path (e.g. 20250720_06_004 or /data/run/20250720_06_004 or a .grib2 file)")
+    p.add_argument("key2", help="Second forecast key or path")
+    p.add_argument(
+        "-d", "--data-dir",
+        action="append",
+        default=["./extraction_data"],
+        help="Directory to search for files. Can be used multiple times. Defaults to ./extraction_data"
+    )
+    p.add_argument(
+        "-o", "--output-dir",
+        default="./outputs",
+        help="Directory to write Zarr output. Defaults to ./outputs"
+    )
+    return p.parse_args()
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: ./04_zarr.py yyyymmdd_hh_### yyyymmdd_hh_###")
-        sys.exit(1)
-
-    key1 = sys.argv[1]
-    key2 = sys.argv[2]
+    args = parse_args()
+    search_dirs = [Path(d).expanduser().resolve() for d in args.data_dir]
+    output_dir = Path(args.output_dir).expanduser().resolve()
 
     start = time.time()
-    process_two_forecasts(key1, key2)
-    print(f"⏱ Total time: {time.time()-start:.1f}s")
+    try:
+        process_two_forecasts(args.key1, args.key2, search_dirs, output_dir)
+    finally:
+        print(f"⏱ Total time: {time.time()-start:.1f}s")
 
 if __name__ == "__main__":
     main()
