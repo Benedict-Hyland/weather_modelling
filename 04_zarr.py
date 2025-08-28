@@ -1,4 +1,4 @@
-#!/usr/bin/env puv run python
+#!/usr/bin/env python
 import sys
 from pathlib import Path
 import xarray as xr
