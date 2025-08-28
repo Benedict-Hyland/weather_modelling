@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # gfs-watch.sh — watch NOMADS for newest eligible GFS run (0.25°), notify via ntfy,
-# and upload f000 & f006 subselected via filter_gfs_0p25.pl to S3 after arrival notification.
-# Requirements: bash, wget, awk/sed/coreutils, curl, AWS CLI (v2+)
+# upload subselected GRIBs to S3, then merge defined pairs into NetCDF and upload them too.
+# Requirements: bash, wget, curl, coreutils, AWS CLI (v2+), wgrib2
 # nohup ./gfs-watch.sh > ./watchers.log 2>&1 &
 
 ###############################################################################
 # Config — edit these
 ###############################################################################
+# Filtered GRIBs to fetch/upload (unchanged)
 FORECASTS=(f000 f001 f002 f003 f004 f005 f006 f007 f008 f009 f010 f011)
+
+# Pairs to merge -> NetCDF outputs forecast_1..forecast_6
+# Index order maps to N in forecast_{N}.nc
 MERGE_SETS=(
   "f000 f006"  # forecast_1
   "f001 f007"  # forecast_2
@@ -23,12 +27,12 @@ STATE_FILE="${HOME}/latest_gfs.txt"
 # ntfy topics
 NTFY_NEW_RUN="https://ntfy.sh/gfs_latest_file"
 NTFY_DATA_ARRIVED="https://ntfy.sh/gfs_latest_data"
-NTFY_S3_DOWNLOADED="https://ntfy.sh/gfs_downloaded_s3"
+NTFY_S3_DOWNLOADED="https://ntfy.sh/gfs_downloaded_s3" # will also be used for NetCDF notice
 
-# S3 destination
+# S3 destinations
 S3_BUCKET="graphcast-gfs-forecasts"
-S3_PREFIX="gfs-raw"
-S3_NC_PREFIX="nc-to-model"
+S3_PREFIX="gfs-raw"        # for filtered GRIBs
+S3_NC_PREFIX="nc-to-model" # for merged NetCDFs
 
 # Upload settings
 S3_MAX_RETRIES=5
@@ -36,6 +40,9 @@ S3_EXTRA_ARGS=(--no-progress)
 
 # Polling interval (seconds)
 INTERVAL=60
+
+# NetCDF Version
+NETCDF_OUT="nc3"
 
 ###############################################################################
 # Helpers
@@ -62,7 +69,6 @@ http_status() {
 }
 
 # Check ALL requested forecast files exist (HTTP 200) under raw atmos/ paths
-# Returns 0 only if every forecast in FORECASTS is available.
 test_all_forecasts() {
   local run_url="$1" hh atmos f raw raw_status ok=1
   [[ -z "$run_url" ]] && return 2
@@ -86,7 +92,6 @@ run_id_from_url() {
 
 notify_ntfy() {
   local topic="$1" msg="$2"
-  # Return code signals success/failed 2xx, but we never gate uploads on this.
   curl -s -S -o /dev/null -w "%{http_code}" -H "Title: GFS Watcher" -d "$msg" "$topic" || echo 000
 }
 
@@ -107,9 +112,7 @@ build_filter_url() {
   local rid="$1" fcode="$2"
   local y="${rid:0:4}" m="${rid:4:2}" d="${rid:6:2}" h="${rid:8:2}"
   local file="gfs.t${h}z.pgrb2.0p25.${fcode}"
-  # URL-encoded dir parameter: /gfs.YYYYMMDD/HH/atmos
   local dir_enc="%2Fgfs.${y}${m}${d}%2F${h}%2Fatmos"
-  # Levels & variables — edit as needed
   local params
   params=$(
     cat <<'EOF' | tr -d '\n'
@@ -167,7 +170,6 @@ download_all_to_s3() {
     fi
   done
 
-  # Print the uploaded mapping (one per line: "f### s3://...")
   printf "%s\n" "${uploaded[@]}"
   return 0
 }
@@ -180,10 +182,8 @@ write_state_after_uploads() {
     echo "RUN_URL=${run_url}"
     echo "FORECASTS=$(IFS=,; echo "${FORECASTS[*]}")"
     echo "S3_COUNT=$(printf "%s\n" "$s3_lines" | sed '/^$/d' | wc -l | tr -d ' ')"
-    # Emit each S3 mapping as S3_f000=..., etc.
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
-      # line: "f000 s3://bucket/key"
       local f uri
       f=$(echo "$line" | awk '{print $1}')
       uri=$(echo "$line" | awk '{print $2}')
@@ -195,12 +195,116 @@ write_state_after_uploads() {
 }
 
 ###############################################################################
+# New: Merge filtered pairs -> NetCDF and upload to S3
+###############################################################################
+_download_with_retries() {
+  local url="$1" out="$2" attempt=1
+  while (( attempt <= S3_MAX_RETRIES )); do
+    echo "Downloading (attempt ${attempt}/${S3_MAX_RETRIES}): $url -> $out"
+    if curl -fSL "$url" -o "$out"; then
+      return 0
+    fi
+    echo "Download failed (attempt $attempt). Retrying in 10s…"
+    sleep 10
+    ((attempt++))
+  done
+  return 1
+}
+
+_upload_file_to_s3() {
+  local path="$1" dst_uri="$2" attempt=1
+  while (( attempt <= S3_MAX_RETRIES )); do
+    echo "S3 upload (attempt ${attempt}/${S3_MAX_RETRIES}): $path -> $dst_uri"
+    if aws s3 cp "$path" "$dst_uri" "${S3_EXTRA_ARGS[@]}"; then
+      echo "Upload OK: $dst_uri"
+      return 0
+    fi
+    echo "Upload failed (attempt $attempt). Retrying in 10s…"
+    sleep 10
+    ((attempt++))
+  done
+  echo "ERROR: Upload failed after ${S3_MAX_RETRIES} attempts: $dst_uri"
+  return 1
+}
+
+merge_and_upload_netcdf() {
+  local rid="$1"  # YYYYMMDDHH
+  local tmpdir
+  tmpdir=$(mktemp -d) || { echo "ERROR: mktemp failed"; return 1; }
+  echo "Working in temp dir: $tmpdir"
+
+  local h dstr nc_s3_prefix ncflag
+  dstr=$(yyyy_mm_dd_from_runid "$rid")
+  h=$(hour_from_runid "$rid")
+  nc_s3_prefix="s3://${S3_BUCKET}/${S3_NC_PREFIX}"
+  # choose wgrib2 flag for netcdf flavor
+  if [[ "$NETCDF_OUT" == "nc4" ]]; then ncflag="-nc4"; else ncflag="-nc3"; fi
+
+  local i=1
+  for pair in "${MERGE_SETS[@]}"; do
+    local fA fB
+    read -r fA fB <<< "$pair"
+
+    local urlA urlB fileA fileB merged_grb merged_scaled out_nc
+    urlA=$(build_filter_url "$rid" "$fA")
+    urlB=$(build_filter_url "$rid" "$fB")
+    fileA="${tmpdir}/${fA}.grb2"
+    fileB="${tmpdir}/${fB}.grb2"
+    merged_grb="${tmpdir}/merged_${i}.grb2"
+    merged_scaled="${tmpdir}/merged_${i}_scaled.grb2"
+    out_nc="${tmpdir}/forecast_${i}.nc"
+
+    echo "Preparing forecast_${i}: ${fA} + ${fB}"
+    if ! _download_with_retries "$urlA" "$fileA"; then
+      echo "ERROR: Failed to download $fA"; rm -rf "$tmpdir"; return 1
+    fi
+    if ! _download_with_retries "$urlB" "$fileB"; then
+      echo "ERROR: Failed to download $fB"; rm -rf "$tmpdir"; return 1
+    fi
+
+    # Merge the two GRIBs (append messages)
+    if ! wgrib2 "$fileA" -grib_out "$merged_grb" >/dev/null 2>&1; then
+      echo "ERROR: wgrib2 failed writing initial GRIB for $fA"; rm -rf "$tmpdir"; return 1
+    fi
+    if ! wgrib2 "$fileB" -append -grib_out "$merged_grb" >/dev/null 2>&1; then
+      echo "ERROR: wgrib2 failed appending GRIB for $fB"; rm -rf "$tmpdir"; return 1
+    fi
+
+    # --- HGT unit transform (multiply by 9.80665) ---
+    # We write *all* messages: first write HGT (scaled), then append the non-HGT.
+    # This uses Version 1 IF blocks (-if/-not_if with -grib_out/-append).
+    if ! wgrib2 "$merged_grb" \
+        -if ":HGT:" -rpn "const,9.80665,*" -grib_out "$merged_scaled" \
+        -not_if ":HGT:" -append -grib_out "$merged_scaled" >/dev/null 2>&1; then
+      echo "ERROR: wgrib2 HGT scaling failed for forecast_${i}"; rm -rf "$tmpdir"; return 1
+    fi
+
+    # Convert to requested NetCDF flavor (stores valid times on the time axis)
+    if ! wgrib2 "$merged_scaled" $ncflag -netcdf "$out_nc" >/dev/null 2>&1; then
+      echo "ERROR: wgrib2 -netcdf failed for forecast_${i}"; rm -rf "$tmpdir"; return 1
+    fi
+
+    # Upload to S3 as nc_to_model/forecast_{i}.nc (intentionally fixed name)
+    local dst="${nc_s3_prefix}/forecast_${i}.nc"
+    if ! _upload_file_to_s3 "$out_nc" "$dst"; then
+      echo "ERROR: Failed to upload $out_nc to $dst"; rm -rf "$tmpdir"; return 1
+    fi
+    echo "Uploaded: ${dst}"
+    ((i++))
+  done
+
+  rm -rf "$tmpdir"
+  return 0
+}
+
+###############################################################################
 # Main loop
 ###############################################################################
 echo "Starting GFS watcher. State: $STATE_FILE"
 echo "Eligible hours: 00, 06, 12, 18"
 echo "Forecasts: ${FORECASTS[*]}"
-echo "S3 bucket:  s3://${S3_BUCKET}/${S3_PREFIX}"
+echo "S3 bucket (GRIB):  s3://${S3_BUCKET}/${S3_PREFIX}"
+echo "S3 bucket (NetCDF): s3://${S3_BUCKET}/${S3_NC_PREFIX}"
 echo "Interval:   ${INTERVAL}s"
 echo
 
@@ -213,11 +317,9 @@ while true; do
   if [[ "$rid" != "$last_id" && -n "$rid" ]]; then
     echo "Newer eligible run detected: $rid (prev: ${last_id:-none})"
 
-    # Fire-and-forget notification (do not gate uploads on result)
     notify_ntfy "$NTFY_NEW_RUN" "New GFS run (eligible hour): $rid
 $run_url" >/dev/null 2>&1 || true
 
-    # Wait until ALL requested forecasts are available
     if test_all_forecasts "$run_url"; then
       echo "All requested files are present."
     else
@@ -232,24 +334,35 @@ $run_url" >/dev/null 2>&1 || true
       done
     fi
 
-    # Optional “arrived” notification (don’t gate uploads)
     notify_ntfy "$NTFY_DATA_ARRIVED" "GFS data available for $rid
 Run: $run_url
 Forecasts: ${FORECASTS[*]}" >/dev/null 2>&1 || true
 
-    # Upload ALL requested forecasts to S3 (filtered). Proceed even if ntfy failed.
     if [[ -z "$S3_BUCKET" ]]; then
       echo "WARNING: S3_BUCKET is unset; skipping uploads and state update."
     else
+      # 1) Upload filtered GRIBs to S3 (raw)
       s3_map=$(download_all_to_s3 "$rid")  # echoes lines "f### s3://..."
       if [[ $? -eq 0 ]]; then
-        echo "All uploads succeeded. Updating state file…"
+        echo "All GRIB uploads succeeded. Updating state file…"
         write_state_after_uploads "$run_url" "$rid" "$s3_map"
         echo "State updated: $STATE_FILE"
-        notify_ntfy "$NTFY_S3_DOWNLOADED" "All Data Downloaded To S3 For $rid"
+        notify_ntfy "$NTFY_S3_DOWNLOADED" "All Data Downloaded To S3 For $rid" >/dev/null 2>&1 || true
       else
-        echo "ERROR: One or more uploads failed. State NOT updated."
-        notiify_ntfy "$NTFY_S3_DOWNLOADED" "S3 Download Failed! $rid Failed to Upload"
+        echo "ERROR: One or more GRIB uploads failed. State NOT updated."
+        notify_ntfy "$NTFY_S3_DOWNLOADED" "S3 Download Failed! $rid Failed to Upload" >/dev/null 2>&1 || true
+        # still attempt NetCDF? Safer to skip if raw failed
+        continue
+      fi
+
+      # 2) Build & upload merged NetCDFs (forecast_1..forecast_6)
+      echo "Merging forecast pairs into NetCDF and uploading…"
+      if merge_and_upload_netcdf "$rid"; then
+        echo "All NetCDF merges & uploads completed."
+        notify_ntfy "$NTFY_S3_DOWNLOADED" "NetCDF Merged files uploaded!" >/dev/null 2>&1 || true
+      else
+        echo "ERROR: NetCDF merge/upload failed for $rid."
+        notify_ntfy "$NTFY_S3_DOWNLOADED" "NetCDF merge/upload FAILED for $rid" >/dev/null 2>&1 || true
       fi
     fi
 
