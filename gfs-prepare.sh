@@ -31,7 +31,7 @@ NTFY_S3_DOWNLOADED="https://ntfy.sh/gfs_downloaded_s3" # will also be used for N
 
 # S3 destinations
 S3_BUCKET="graphcast-gfs-forecasts"
-S3_PREFIX="gfs-raw"        # for filtered GRIBs
+S3_PREFIX="gfs-raw-test"        # for filtered GRIBs
 S3_NC_PREFIX="nc-to-model" # for merged NetCDFs
 
 # Upload settings
@@ -274,9 +274,10 @@ merge_and_upload_netcdf() {
     # We write *all* messages: first write HGT (scaled), then append the non-HGT.
     # This uses Version 1 IF blocks (-if/-not_if with -grib_out/-append).
     if ! wgrib2 "$merged_grb" \
-        -if ":HGT:" -rpn "const,9.80665,*" -grib_out "$merged_scaled" \
-        -not_if ":HGT:" -append -grib_out "$merged_scaled" >/dev/null 2>&1; then
-      echo "ERROR: wgrib2 HGT scaling failed for forecast_${i}"; rm -rf "$tmpdir"; return 1
+      -if ":HGT:" -rpn "const,9.80665,*" -grib_out "$merged_scaled" \
+      -not_if ":HGT:" -append -grib_out "$merged_scaled" >/dev/null 2>&1; then
+      echo "WARNING: HGT scaling skipped for forecast_${i} (no HGT or transform failed)"
+      cp "$merged_grb" "$merged_scaled"
     fi
 
     # Convert to requested NetCDF flavor (stores valid times on the time axis)
