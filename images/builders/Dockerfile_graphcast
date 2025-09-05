@@ -1,0 +1,45 @@
+# =========
+# Builder: create a named env under /opt/conda
+# =========
+FROM mambaorg/micromamba:1.5.10 AS builder
+ENV MAMBA_ROOT_PREFIX=/opt/conda
+SHELL ["/bin/bash", "-lc"]
+
+# Need root for apt
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fetch the env spec (or COPY your own for reproducible builds)
+RUN curl -fsSL https://raw.githubusercontent.com/NOAA-EMC/graphcast/main/NCEP/environment.yml \
+    -o /tmp/environment.yml
+
+# Create a named env (NOT at /opt/conda)
+# This lands at /opt/conda/envs/graphcast
+RUN micromamba create -y -n graphcast -f /tmp/environment.yml \
+ && micromamba clean -a -y
+
+# =========
+# Runtime: slim glibc base, copy only the env, add tini
+# =========
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      tini ca-certificates git \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
+
+# Optional: source code
+RUN git clone https://github.com/NOAA-EMC/graphcast.git /graphcast
+WORKDIR /graphcast
+
+# Copy just the environment directory to keep image small
+# (This dereferences hardlinks; everything needed ends up here)
+COPY --from=builder /opt/conda/envs/graphcast /opt/env
+
+# Use this env by default — no activation needed
+ENV PATH="/opt/env/bin:${PATH}"
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "-V"]

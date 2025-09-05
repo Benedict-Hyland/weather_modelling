@@ -1,0 +1,37 @@
+FROM debian:bookworm AS builder
+
+RUN apt update
+RUN apt install -y build-essential cmake gfortran libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev wget tar
+
+WORKDIR /src
+RUN wget https://github.com/NOAA-EMC/wgrib2/archive/refs/tags/v3.7.0.tar.gz
+RUN tar -xvzf v3.7.0.tar.gz
+
+WORKDIR /src/wgrib2-3.7.0
+
+RUN mkdir build
+WORKDIR /src/wgrib2-3.7.0/build
+
+RUN cmake -B build -S .. -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=/opt/wgrib2 \
+  -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+  -DCMAKE_INSTALL_RPATH="\$ORIGIN/../lib" \
+  -DUSE_AEC=ON -DUSE_PNG=ON -DUSE_OPENJPEG=ON -DUSE_NETCDF=ON
+
+RUN cmake --build build -j"$(nproc)"
+
+RUN cmake --install build
+
+# =========
+# Runtime: 254MB
+# =========
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libaec0 libnetcdf19 libpng16-16 libopenjp2-7 ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/wgrib2 /opt/wgrib2
+
+ENV PATH="/opt/wgrib2/bin:${PATH}"

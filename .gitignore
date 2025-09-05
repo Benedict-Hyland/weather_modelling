@@ -8,6 +8,8 @@
 !*.nix
 !.gitignore
 !pyproject.toml
+!Dockerfile*
+!docker-compose.yml
 
 # Kepp all directories (so git can see inside them)
 !*/
