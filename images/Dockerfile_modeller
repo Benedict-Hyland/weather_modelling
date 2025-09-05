@@ -1,7 +1,7 @@
 # =========
-# Builder: create a named env under /opt/conda
+# Mamba Builder: create a named env under /opt/conda
 # =========
-FROM mambaorg/micromamba:1.5.10 AS builder
+FROM mambaorg/micromamba:1.5.10 AS mamba_builder
 ENV MAMBA_ROOT_PREFIX=/opt/conda
 SHELL ["/bin/bash", "-lc"]
 
@@ -21,6 +21,33 @@ RUN micromamba create -y -n graphcast -f /tmp/environment.yml \
  && micromamba clean -a -y
 
 # =========
+# WGrib Builder: create a named env under /opt/conda
+# =========
+FROM debian:bookworm AS wgrib_builder
+
+RUN apt update
+RUN apt install -y build-essential cmake gfortran libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev wget tar
+
+WORKDIR /src
+RUN wget https://github.com/NOAA-EMC/wgrib2/archive/refs/tags/v3.7.0.tar.gz
+RUN tar -xvzf v3.7.0.tar.gz
+
+WORKDIR /src/wgrib2-3.7.0
+
+RUN mkdir build
+WORKDIR /src/wgrib2-3.7.0/build
+
+RUN cmake -B build -S .. -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=/opt/wgrib2 \
+  -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+  -DCMAKE_INSTALL_RPATH="\$ORIGIN/../lib" \
+  -DUSE_AEC=ON -DUSE_PNG=ON -DUSE_OPENJPEG=ON -DUSE_NETCDF=ON
+
+RUN cmake --build build -j"$(nproc)"
+
+RUN cmake --install build
+
+# =========
 # Runtime: slim glibc base, copy only the env, add tini
 # =========
 FROM debian:bookworm-slim AS runtime
@@ -36,10 +63,12 @@ WORKDIR /graphcast
 
 # Copy just the environment directory to keep image small
 # (This dereferences hardlinks; everything needed ends up here)
-COPY --from=builder /opt/conda/envs/graphcast /opt/env
+COPY --from=mamba_builder /opt/conda/envs/graphcast /opt/env
+COPY --from=wgrib_builder /opt/wgrib2 /opt/wgrib2
 
 # Use this env by default — no activation needed
 ENV PATH="/opt/env/bin:${PATH}"
+ENV PATH="/opt/wgrib2/bin:${PATH}"
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python", "-V"]

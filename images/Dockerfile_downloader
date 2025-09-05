@@ -1,4 +1,4 @@
-FROM debian:bookworm AS builder
+FROM debian:bookworm AS wgrib_builder
 
 RUN apt update
 RUN apt install -y build-essential cmake gfortran libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev wget tar
@@ -29,9 +29,16 @@ RUN cmake --install build
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libaec0 libnetcdf19 libpng16-16 libopenjp2-7 ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+    libaec0 libnetcdf19 libpng16-16 libopenjp2-7 ca-certificates
 
-COPY --from=builder /opt/wgrib2 /opt/wgrib2
+RUN apt-get install -y --no-install-recommends \
+    bash wget curl coreutils grep sed gawk debianutils unzip \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o awscliv2.zip \
+    && unzip awscliv2.zip \
+    && ./aws/install
+
+COPY --from=wgrib_builder /opt/wgrib2 /opt/wgrib2
 
 ENV PATH="/opt/wgrib2/bin:${PATH}"
