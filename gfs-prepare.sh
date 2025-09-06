@@ -121,7 +121,6 @@ build_filter_url() {
 &lev_400_mb=on&lev_500_mb=on&lev_50_mb=on&lev_600_mb=on&lev_700_mb=on
 &lev_850_mb=on&lev_925_mb=on&lev_surface=on
 &var_HGT=on&var_LAND=on&var_PRMSL=on&var_SPFH=on&var_TMP=on&var_UGRD=on&var_VGRD=on&var_VVEL=on
-&leftlon=0&rightlon=360&toplat=90&bottomlat=-90
 EOF
   )
   echo "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?file=${file}${params}&dir=${dir_enc}"
