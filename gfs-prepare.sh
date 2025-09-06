@@ -92,7 +92,7 @@ run_id_from_url() {
 
 notify_ntfy() {
   local topic="$1" msg="$2"
-  curl -s -S -o /dev/null -w "%{http_code}" -H "Title: GFS Watcher" -d "$msg" "$topic" || echo 000
+  curl -s -S -o /dev/null -w "%{http_code}" -H "Title: GFS Watcher" -d "$(date) $msg" "$topic" || echo 000
 }
 
 read_last_id() {
