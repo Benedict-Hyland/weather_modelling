@@ -29,10 +29,11 @@ RUN cmake --install build
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libaec0 libnetcdf19 libpng16-16 libopenjp2-7 ca-certificates
+    libaec0 libnetcdf19 libpng16-16 libopenjp2-7 ca-certificates \
+    libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev
 
 RUN apt-get install -y --no-install-recommends \
-    bash wget curl coreutils grep sed gawk debianutils unzip \
+    bash wget curl coreutils grep sed gawk debianutils unzip less \
   && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o awscliv2.zip \
@@ -42,3 +43,12 @@ RUN curl -fsSl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -
 COPY --from=wgrib_builder /opt/wgrib2 /opt/wgrib2
 
 ENV PATH="/opt/wgrib2/bin:${PATH}"
+
+WORKDIR /app
+COPY ./gfs-prepare.sh /app/gfs-prepare.sh
+RUN chmod +x /app/gfs-prepare.sh
+
+ENV AWS_REGION=eu-west-2
+ENV AWS_SDK_LOAD_CONFIG=1
+
+CMD ["bash", "-c", "/app/gfs-prepare.sh 2>&1 | tee -a /var/log/watcher.log"]

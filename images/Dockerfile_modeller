@@ -53,7 +53,9 @@ RUN cmake --install build
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      tini ca-certificates git \
+      tini ca-certificates git wget curl \
+      libaec0 libnetcdf19 libpng16-16 libopenjp2-7 \
+      libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
 

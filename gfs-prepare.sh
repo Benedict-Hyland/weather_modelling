@@ -262,10 +262,10 @@ merge_and_upload_netcdf() {
     fi
 
     # Merge the two GRIBs (append messages)
-    if ! wgrib2 "$fileA" -grib_out "$merged_grb" >/dev/null 2>&1; then
+    if ! wgrib2 "$fileA" -grib_out "$merged_grb" >/dev/null 2>error.log; then
       echo "ERROR: wgrib2 failed writing initial GRIB for $fA"; rm -rf "$tmpdir"; return 1
     fi
-    if ! wgrib2 "$fileB" -append -grib_out "$merged_grb" >/dev/null 2>&1; then
+    if ! wgrib2 "$fileB" -append -grib_out "$merged_grb" >/dev/null 2>error.log; then
       echo "ERROR: wgrib2 failed appending GRIB for $fB"; rm -rf "$tmpdir"; return 1
     fi
 
@@ -274,13 +274,13 @@ merge_and_upload_netcdf() {
     # This uses Version 1 IF blocks (-if/-not_if with -grib_out/-append).
     if ! wgrib2 "$merged_grb" \
       -if ":HGT:" -rpn "const,9.80665,*" -grib_out "$merged_scaled" \
-      -not_if ":HGT:" -append -grib_out "$merged_scaled" >/dev/null 2>&1; then
+      -not_if ":HGT:" -append -grib_out "$merged_scaled" >/dev/null 2>error.log; then
       echo "WARNING: HGT scaling skipped for forecast_${i} (no HGT or transform failed)"
       cp "$merged_grb" "$merged_scaled"
     fi
 
     # Convert to requested NetCDF flavor (stores valid times on the time axis)
-    if ! wgrib2 "$merged_scaled" $ncflag -netcdf "$out_nc" >/dev/null 2>&1; then
+    if ! wgrib2 "$merged_scaled" $ncflag -netcdf "$out_nc" >/dev/null 2>error.log; then
       echo "ERROR: wgrib2 -netcdf failed for forecast_${i}"; rm -rf "$tmpdir"; return 1
     fi
 
