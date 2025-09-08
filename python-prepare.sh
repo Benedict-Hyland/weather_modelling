@@ -66,7 +66,7 @@ test_forecast_availability() {
 
   local forecasts=("${FORECASTS[@]}")
   if (( ${#forecasts[@]} == 0 )); then
-    forecasts=(f000 f006) # minimal readiness check
+    forecasts=(f000 f011) # minimal readiness check
   fi
 
   for f in "${forecasts[@]}"; do
