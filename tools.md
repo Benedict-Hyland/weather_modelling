@@ -11,4 +11,4 @@ docker run -it \
   downloader:latest
 
 
-python NCEP/gdas_utility.py 2025090700 2025090706 --level 13 --source nomads -m wgrib2 --output ./outputs -d ./downloads --keep yes
+python NCEP/gdas_utility.py 2025090700 2025090706 --level 13 --source nomads -m wgrib2 --output ./outputs -d ./downloads --pair true --keep yes

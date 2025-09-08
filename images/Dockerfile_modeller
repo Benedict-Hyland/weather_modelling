@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Fetch the env spec (or COPY your own for reproducible builds)
-RUN curl -fsSL https://raw.githubusercontent.com/NOAA-EMC/graphcast/main/NCEP/environment.yml \
+RUN curl -fsSL https://raw.githubusercontent.com/Benedict-Hyland/graphcast/main/NCEP/environment.yml \
     -o /tmp/environment.yml
 
 # Create a named env (NOT at /opt/conda)
@@ -53,15 +53,21 @@ RUN cmake --install build
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      tini ca-certificates git wget curl \
-      libaec0 libnetcdf19 libpng16-16 libopenjp2-7 \
-      libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && update-ca-certificates
+    tini ca-certificates git wget curl unzip \
+    libaec0 libnetcdf19 libpng16-16 libopenjp2-7 \
+    libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev \
+  && rm -rf /var/lib/apt/lists/* \
+  && update-ca-certificates
 
-# Optional: source code
-RUN git clone https://github.com/NOAA-EMC/graphcast.git /graphcast
-WORKDIR /graphcast
+RUN curl -fsSl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o awscliv2.zip \
+  && unzip awscliv2.zip \
+  && ./aws/install
+
+RUN git clone https://github.com/Benedict-Hyland/graphcast.git /graphcast
+
+WORKDIR /app
+COPY ./python-prepare.sh /app/python-prepare.sh
+RUN chmod +x /app/python-prepare.sh
 
 # Copy just the environment directory to keep image small
 # (This dereferences hardlinks; everything needed ends up here)
@@ -72,5 +78,9 @@ COPY --from=wgrib_builder /opt/wgrib2 /opt/wgrib2
 ENV PATH="/opt/env/bin:${PATH}"
 ENV PATH="/opt/wgrib2/bin:${PATH}"
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["python", "-V"]
+ENV AWS_REGION=eu-west-2
+ENV AWS_SDK_LOAD_CONFIG=1
+
+# ENTRYPOINT ["/usr/bin/tini", "--"]
+# CMD ["python", "-V"]
+CMD ["bash", "-c", "/app/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log"]
