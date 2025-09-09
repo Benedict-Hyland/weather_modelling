@@ -22,9 +22,7 @@ RUN micromamba create -y -n graphcast -f /tmp/environment.yml \
 
 ENV PIP_NO_INPUT=1
 RUN micromamba run -n graphcast python -m pip install --no-cache-dir \
-      git+https://github.com/Benedict-Hyland/graphcast.git@main#egg=graphcast \
-      flax==0.8.3 \
-      jax==0.4.31
+      git+https://github.com/Benedict-Hyland/graphcast.git@main#egg=graphcast
 
 # =========
 # WGrib Builder: create a named env under /opt/conda
