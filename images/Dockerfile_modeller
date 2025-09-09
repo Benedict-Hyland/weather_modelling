@@ -20,9 +20,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/Benedict-Hyland/graphcast/main/
 RUN micromamba create -y -n graphcast -f /tmp/environment.yml \
  && micromamba clean -a -y
 
-ENV PIP_NO_INPUT=1
-RUN micromamba run -n graphcast python -m pip install --no-cache-dir \
-      git+https://github.com/Benedict-Hyland/graphcast.git@main#egg=graphcast
+RUN micromamba run -n graphcast python -m pip install --upgrade pip setuptools wheel
 
 # =========
 # WGrib Builder: create a named env under /opt/conda
@@ -81,6 +79,8 @@ COPY --from=wgrib_builder /opt/wgrib2 /opt/wgrib2
 # Use this env by default — no activation needed
 ENV PATH="/opt/env/bin:${PATH}"
 ENV PATH="/opt/wgrib2/bin:${PATH}"
+
+RUN python -m pip install --no-cache-dir --no-deps /graphcast
 
 ENV AWS_REGION=eu-west-2
 ENV AWS_SDK_LOAD_CONFIG=1
