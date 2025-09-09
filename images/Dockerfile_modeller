@@ -20,6 +20,12 @@ RUN curl -fsSL https://raw.githubusercontent.com/Benedict-Hyland/graphcast/main/
 RUN micromamba create -y -n graphcast -f /tmp/environment.yml \
  && micromamba clean -a -y
 
+ENV PIP_NO_INPUT=1
+RUN micromamba run -n graphcast python -m pip install --no-cache-dir \
+      git+https://github.com/Benedict-Hyland/graphcast.git@main#egg=graphcast \
+      flax==0.8.3 \
+      jax==0.4.31
+
 # =========
 # WGrib Builder: create a named env under /opt/conda
 # =========
