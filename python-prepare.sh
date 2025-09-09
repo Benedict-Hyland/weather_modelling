@@ -107,38 +107,60 @@ hour_from_runid() {
 ###############################################################################
 ###############################################################################
 process_with_python() {
-  local rid="$1"  # YYYYMMDDHH
+  local rid="$1"
   local start_date="$rid"
-  local end_date="$rid"  # Same date for single run processing
-  
+  local end_date="$rid"
+
   echo "Processing GFS data for $rid using Python utility..."
-  
+
+  # Per-run working dirs to avoid clashes & make cleanup simple
+  local work_root="${LOCAL_WORK_ROOT:-/tmp/gfs-work}/${rid}"
+  local local_out="${work_root}/outputs"
+  local local_dl="${work_root}/downloads"
+  mkdir -p "$local_out" "$local_dl"
+
   local python_cmd="python $PYTHON_SCRIPT_PATH $start_date $end_date"
-  python_cmd="$python_cmd --level $PRESSURE_LEVELS"
+  python_cmd="$python_cmd --levels $PRESSURE_LEVELS"
+  python_cmd="$python_cmd --method $PROCESSING_METHOD"
   python_cmd="$python_cmd --source nomads"
-  python_cmd="$python_cmd -m $PROCESSING_METHOD"
   python_cmd="$python_cmd --pair true"
   python_cmd="$python_cmd --keep $KEEP_DOWNLOADS"
-  
-  if [[ "$STORAGE_MODE" == "s3" ]]; then
-    python_cmd="$python_cmd --output s3://${S3_BUCKET}/${S3_NC_PREFIX}"
-    python_cmd="$python_cmd --download s3://${S3_BUCKET}/${S3_PREFIX}"
-  else
-    mkdir -p "$LOCAL_OUTPUT_DIR" "$LOCAL_DOWNLOAD_DIR"
-    python_cmd="$python_cmd --output $LOCAL_OUTPUT_DIR"
-    python_cmd="$python_cmd --download $LOCAL_DOWNLOAD_DIR"
-  fi
-  
+  python_cmd="$python_cmd --output $local_out"
+  python_cmd="$python_cmd --download $local_dl"
+
   echo "Executing: $python_cmd"
-  
   if eval "$python_cmd"; then
     echo "Python processing completed successfully for $rid"
+
+    if [[ "$STORAGE_MODE" == "s3" ]]; then
+      # Upload outputs (NetCDFs)
+      aws s3 sync "$local_out/" "s3://${S3_BUCKET}/${S3_NC_PREFIX}/${rid}/" \
+        --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
+          echo "ERROR: failed to upload outputs to s3://${S3_BUCKET}/${S3_NC_PREFIX}/${rid}/"
+          return 1
+        }
+
+      # (Optional) upload downloaded GRIBs too
+      if [[ "${UPLOAD_RAW_TO_S3:-no}" == "yes" ]]; then
+        aws s3 sync "$local_dl/" "s3://${S3_BUCKET}/${S3_PREFIX}/${rid}/" \
+          --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
+            echo "ERROR: failed to upload downloads to s3://${S3_BUCKET}/${S3_PREFIX}/${rid}/"
+            return 1
+          }
+      fi
+
+      # (Optional) cleanup local after successful upload
+      if [[ "${CLEANUP_LOCAL_AFTER_S3:-yes}" == "yes" ]]; then
+        rm -rf "$work_root"
+      fi
+    fi
     return 0
   else
     echo "ERROR: Python processing failed for $rid"
     return 1
   fi
 }
+
 
 # upload_to_s3_if_needed() {
 #   local rid="$1"
