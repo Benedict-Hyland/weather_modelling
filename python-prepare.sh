@@ -15,9 +15,12 @@ NTFY_S3_DOWNLOADED="https://ntfy.sh/gfs_downloaded_s3"
 
 STORAGE_MODE="${STORAGE_MODE:-s3}"
 
-S3_BUCKET="graphcast-gfs-forecasts"
-S3_PREFIX="gfs-raw-test"
-S3_NC_PREFIX="nc-to-model"
+S3_BUCKET="blueoctopusdata-forecasting-bronze"
+S3_MODEL="gfs"
+S3_DATATYPE_RAW="grib"
+S3_DATATYPE_NC="netcdf"
+# ${S3_PROJECT}/# S3_PREFIX="gfs-raw-test"
+# S3_NC_PREFIX="nc-to-model"
 
 LOCAL_OUTPUT_DIR="${LOCAL_OUTPUT_DIR:-./outputs}"
 LOCAL_DOWNLOAD_DIR="${LOCAL_DOWNLOAD_DIR:-./downloads}"
@@ -134,17 +137,19 @@ process_with_python() {
 
     if [[ "$STORAGE_MODE" == "s3" ]]; then
       # Upload outputs (NetCDFs)
-      aws s3 sync "$local_out/" "s3://${S3_BUCKET}/${S3_NC_PREFIX}/${rid}/" \
+      s3_bucket_loc=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_NC}/${rid}
+      aws s3 sync "$local_out/" "${s3_bucket_loc}" \
         --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
-          echo "ERROR: failed to upload outputs to s3://${S3_BUCKET}/${S3_NC_PREFIX}/${rid}/"
+          echo "ERROR: failed to upload outputs to ${s3_bucket_loc}"
           return 1
         }
 
       # (Optional) upload downloaded GRIBs too
       if [[ "${UPLOAD_RAW_TO_S3:-no}" == "yes" ]]; then
-        aws s3 sync "$local_dl/" "s3://${S3_BUCKET}/${S3_PREFIX}/${rid}/" \
+        s3_bucket_loc=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_RAW}/${rid}
+        aws s3 sync "$local_dl/" "${s3_bucket_loc}" \
           --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
-            echo "ERROR: failed to upload downloads to s3://${S3_BUCKET}/${S3_PREFIX}/${rid}/"
+            echo "ERROR: failed to upload downloads to ${s3_bucket_loc}"
             return 1
           }
       fi
@@ -160,19 +165,6 @@ process_with_python() {
     return 1
   fi
 }
-
-
-# upload_to_s3_if_needed() {
-#   local rid="$1"
-  
-#   if [[ "$STORAGE_MODE" == "s3" ]]; then
-#     echo "Data already processed directly to S3"
-#     return 0
-#   else
-#     echo "Local storage mode - no S3 upload needed"
-#     return 0
-#   fi
-# }
 
 write_state_after_processing() {
   local run_url="$1" rid="$2"
