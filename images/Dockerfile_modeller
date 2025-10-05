@@ -65,9 +65,10 @@ RUN curl -fsSl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -
 
 RUN git clone https://github.com/Benedict-Hyland/graphcast.git /graphcast
 
+RUN mkdir -p /app
 WORKDIR /app
-COPY ./python-prepare.sh /app/python-prepare.sh
-RUN chmod +x /app/python-prepare.sh
+# COPY ./python-prepare.sh /app/python-prepare.sh
+# RUN chmod +x /app/python-prepare.sh
 
 # Copy just the environment directory to keep image small
 # (This dereferences hardlinks; everything needed ends up here)
@@ -85,4 +86,12 @@ ENV AWS_SDK_LOAD_CONFIG=1
 
 # ENTRYPOINT ["/usr/bin/tini", "--"]
 # CMD ["python", "-V"]
-CMD ["bash", "-c", "/app/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log"]
+# CMD ["bash", "-c", "/app/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log"]
+CMD ["bash", "-c", "\
+  echo '[startup] Updating python-prepare.sh from GitHub...' && \
+  curl -fsSL https://raw.githubusercontent.com/Benedict-Hyland/weather_modelling/main/python-prepare.sh -o /app/python-prepare.sh || \
+  echo '[warning] Could not update, using existing version'; \
+  chmod +x /app/python-prepare.sh; \
+  /app/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log \
+"]
+
