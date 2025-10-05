@@ -205,8 +205,8 @@ process_with_python() {
 
   echo "Processing GFS data for $rid using Python utility..."
 
-  day = "${rid:0:8}"
-  run = "${rid:8:2}"
+  day="${rid:0:8}"
+  run="${rid:8:2}"
 
   # Per-run working dirs to avoid clashes & make cleanup simple
   local work_root="${LOCAL_WORK_ROOT:-/tmp/gfs-work}/${day}/${run}"
