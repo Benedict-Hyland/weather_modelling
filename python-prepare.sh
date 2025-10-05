@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Requirements: bash, wget, curl, coreutils, AWS CLI (v2+), Python 3.x, gdas_utility.py
 
+# Latest Changes: 05/10/2025
+
 ###############################################################################
 # Config — edit these
 ###############################################################################
@@ -26,8 +28,6 @@ LOCAL_OUTPUT_DIR="${LOCAL_OUTPUT_DIR:-./outputs}"
 LOCAL_DOWNLOAD_DIR="${LOCAL_DOWNLOAD_DIR:-./downloads}"
 
 PYTHON_SCRIPT_PATH="${PYTHON_SCRIPT_PATH:-../graphcast/NCEP/gdas_utility.py}"
-PRESSURE_LEVELS="${PRESSURE_LEVELS:-13}"
-PROCESSING_METHOD="${PROCESSING_METHOD:-wgrib2}"
 KEEP_DOWNLOADS="${KEEP_DOWNLOADS:-yes}"
 
 # Polling interval (seconds)
@@ -36,6 +36,9 @@ FORECASTS=(f000 f001 f002 f003 f004 f005 f006 f007 f008 f009 f010 f011)
 
 S3_MAX_RETRIES=5
 S3_EXTRA_ARGS=(--no-progress)
+
+declare -a MISSING_FORECAST_ITEMS=()
+MISSING_FORECAST_HASH=""
 
 ###############################################################################
 ###############################################################################
@@ -72,13 +75,100 @@ test_forecast_availability() {
     forecasts=(f000 f011) # minimal readiness check
   fi
 
+  MISSING_FORECAST_ITEMS=()
+  MISSING_FORECAST_HASH=""
+
   for f in "${forecasts[@]}"; do
     raw="${atmos}gfs.t${hh}z.pgrb2.0p25.${f}"
     raw_status="$(http_status "$raw")"
-    echo "Check: $raw -> $raw_status"
-    if [[ "$raw_status" != "200" ]]; then ok=0; fi
+    if [[ "$raw_status" != "200" ]]; then
+      ok=0
+      local file_name="${raw##*/}"
+      MISSING_FORECAST_ITEMS+=("${file_name} (HTTP ${raw_status})")
+    fi
   done
-  [[ $ok -eq 1 ]]
+  if [[ $ok -eq 1 ]]; then
+    return 0
+  fi
+
+  if (( ${#MISSING_FORECAST_ITEMS[@]} > 0 )); then
+    MISSING_FORECAST_HASH="$(printf '%s|' "${MISSING_FORECAST_ITEMS[@]}")"
+  fi
+  return 1
+}
+
+join_by() {
+  local IFS="$1"
+  shift
+  printf '%s\n' "$*"
+}
+
+report_missing_forecasts() {
+  local rid="$1" context="$2" extra="$3"
+  local count=${#MISSING_FORECAST_ITEMS[@]}
+
+  if (( count == 0 )); then
+    echo "${context} for ${rid}: all required forecast files are available."
+    return
+  fi
+
+  local summary
+  summary="$(join_by ', ' "${MISSING_FORECAST_ITEMS[@]}")"
+
+  if [[ -n "$extra" ]]; then
+    echo "${context} for ${rid}: missing ${count} forecast files (${extra}) -> ${summary}"
+  else
+    echo "${context} for ${rid}: missing ${count} forecast files -> ${summary}"
+  fi
+}
+
+
+wait_for_forecasts() {
+  local rid="$1" run_url="$2"
+
+  report_missing_forecasts "$rid" "Initial status"
+
+  local wait_start
+  wait_start=$(date +%s)
+  local last_log_ts="$wait_start"
+  local last_missing_hash="$MISSING_FORECAST_HASH"
+
+  while true; do
+    sleep "$INTERVAL"
+
+    if test_forecast_availability "$run_url"; then
+      local waited
+      waited=$(( $(date +%s) - wait_start ))
+      local waited_min=$(( waited / 60 ))
+      local waited_sec=$(( waited % 60 ))
+      if (( waited_min > 0 )); then
+        echo "Required forecast files arrived for $rid after ${waited_min}m ${waited_sec}s."
+      else
+        echo "Required forecast files arrived for $rid after ${waited_sec}s."
+      fi
+      return 0
+    fi
+
+    local now
+    now=$(date +%s)
+
+    if [[ "$MISSING_FORECAST_HASH" != "$last_missing_hash" ]]; then
+      report_missing_forecasts "$rid" "Updated status"
+      last_missing_hash="$MISSING_FORECAST_HASH"
+      last_log_ts="$now"
+      continue
+    fi
+
+    if (( now - last_log_ts >= 300 )); then
+      local elapsed_minutes=$(( (now - wait_start) / 60 ))
+      if (( elapsed_minutes > 0 )); then
+        report_missing_forecasts "$rid" "Still waiting" "${elapsed_minutes}m elapsed"
+      else
+        report_missing_forecasts "$rid" "Still waiting" "<1m elapsed"
+      fi
+      last_log_ts="$now"
+    fi
+  done
 }
 
 
@@ -112,24 +202,23 @@ hour_from_runid() {
 process_with_python() {
   local rid="$1"
   local start_date="$rid"
-  local end_date="$rid"
 
   echo "Processing GFS data for $rid using Python utility..."
 
+  day = "${rid:0:8}"
+  run = "${rid:8:2}"
+
   # Per-run working dirs to avoid clashes & make cleanup simple
-  local work_root="${LOCAL_WORK_ROOT:-/tmp/gfs-work}/${rid}"
+  local work_root="${LOCAL_WORK_ROOT:-/tmp/gfs-work}/${day}/${run}"
   local local_out="${work_root}/outputs"
   local local_dl="${work_root}/downloads"
   mkdir -p "$local_out" "$local_dl"
 
-  local python_cmd="python $PYTHON_SCRIPT_PATH $start_date $end_date"
-  python_cmd="$python_cmd --levels $PRESSURE_LEVELS"
-  python_cmd="$python_cmd --method $PROCESSING_METHOD"
-  python_cmd="$python_cmd --source nomads"
-  python_cmd="$python_cmd --pair true"
-  python_cmd="$python_cmd --keep $KEEP_DOWNLOADS"
+  local python_cmd="python $PYTHON_SCRIPT_PATH $day"
+  python_cmd="$python_cmd --run $run"
   python_cmd="$python_cmd --output $local_out"
   python_cmd="$python_cmd --download $local_dl"
+  python_cmd="$python_cmd --pair true"
 
   echo "Executing: $python_cmd"
   if eval "$python_cmd"; then
@@ -137,7 +226,7 @@ process_with_python() {
 
     if [[ "$STORAGE_MODE" == "s3" ]]; then
       # Upload outputs (NetCDFs)
-      s3_bucket_loc=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_NC}/${rid}
+      s3_bucket_loc=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_NC}/${day}/${run}/
       aws s3 sync "$local_out/" "${s3_bucket_loc}" \
         --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
           echo "ERROR: failed to upload outputs to ${s3_bucket_loc}"
@@ -146,7 +235,7 @@ process_with_python() {
 
       # (Optional) upload downloaded GRIBs too
       if [[ "${UPLOAD_RAW_TO_S3:-no}" == "yes" ]]; then
-        s3_bucket_loc=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_RAW}/${rid}
+        s3_bucket_loc=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_RAW}/${day}/${run}
         aws s3 sync "$local_dl/" "${s3_bucket_loc}" \
           --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
             echo "ERROR: failed to upload downloads to ${s3_bucket_loc}"
@@ -212,14 +301,7 @@ $run_url" >/dev/null 2>&1 || true
       echo "Required forecast files are present."
     else
       echo "Waiting for required forecast files to arrive (poll ${INTERVAL}s)…"
-      while true; do
-        sleep "$INTERVAL"
-        echo "Rechecking ${rid}…"
-        if test_forecast_availability "$run_url"; then
-          echo "Required forecast files arrived for $rid."
-          break
-        fi
-      done
+      wait_for_forecasts "$rid" "$run_url"
     fi
 
     notify_ntfy "$NTFY_DATA_ARRIVED" "GFS data available for $rid
