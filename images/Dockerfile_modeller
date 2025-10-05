@@ -63,7 +63,7 @@ RUN curl -fsSl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -
   && unzip awscliv2.zip \
   && ./aws/install
 
-# RUN git clone https://github.com/Benedict-Hyland/graphcast.git /graphcast
+RUN git clone https://github.com/Benedict-Hyland/graphcast.git /graphcast
 
 RUN mkdir -p /app
 WORKDIR /app
