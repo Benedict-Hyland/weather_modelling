@@ -89,9 +89,9 @@ ENV AWS_SDK_LOAD_CONFIG=1
 # CMD ["bash", "-c", "/app/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log"]
 CMD ["bash", "-c", "\
   echo '[startup] Updating python-prepare.sh from GitHub...' && \
-  git clone https://github.com/Benedict-Hyland/weather_modelling.git || \
+  curl -fsSl https://raw.githubusercontent.com/Benedict-Hyland/weather_modelling/refs/heads/main/python-prepare.sh -o /app/python-prepare.sh || \
   echo '[warning] Could not update, using existing version'; \
-  chmod +x /app/weather_modelling/python-prepare.sh; \
-  /app/weather_modelling/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log \
+  chmod +x /app/python-prepare.sh; \
+  /app/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log \
 "]
 
