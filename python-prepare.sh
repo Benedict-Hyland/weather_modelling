@@ -209,7 +209,7 @@ process_with_python() {
   run="${rid:8:2}"
 
   # Per-run working dirs to avoid clashes & make cleanup simple
-  local work_root="${LOCAL_WORK_ROOT:-/tmp/gfs-work}/${day}/${run}"
+  local work_root="${LOCAL_WORK_ROOT:-/app/data}/${day}/${run}"
   local local_out="${work_root}/outputs"
   local local_dl="${work_root}/downloads"
   mkdir -p "$local_out" "$local_dl"
