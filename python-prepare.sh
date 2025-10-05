@@ -283,7 +283,8 @@ echo "Python script: $PYTHON_SCRIPT_PATH"
 echo "Pressure levels: $PRESSURE_LEVELS"
 echo "Processing method: $PROCESSING_METHOD"
 echo "Interval: ${INTERVAL}s"
-echo
+
+notify_ntfy "https://ntfy.sh/python_script_startup" "Started Python Weather Script"
 
 while true; do
   run_url=$(latest_gfs) || { echo "Failed to get latest eligible run."; sleep "$INTERVAL"; continue; }
