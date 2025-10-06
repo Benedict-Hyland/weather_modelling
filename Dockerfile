@@ -91,8 +91,10 @@ CMD ["bash", "-c", "\
   echo '[startup] Cloning GitHub Repos...' && \
   git clone https://github.com/Benedict-Hyland/graphcast.git && \
   echo '[startup] Cloned graphcast repo' && \
+  git --git-dir=/app/graphcast/.git log -n 1 && \
   git clone https://github.com/Benedict-Hyland/weather_modelling.git && \
   echo '[startup] Cloned weather_modelling repo' && \
+  git --git-dir=/app/weather_modelling/.git log -n 1 && \
   cd weather_modelling && \
   cp python-prepare.sh /app/python-prepare.sh && \
   chmod +x /app/python-prepare.sh && \
