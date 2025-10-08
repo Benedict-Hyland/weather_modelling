@@ -316,6 +316,8 @@ Processing with Python utility..." >/dev/null 2>&1 || true
       
       if [[ "$STORAGE_MODE" == "s3" ]]; then
         notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data uploaded to S3 for $rid" >/dev/null 2>&1 || true
+        rm -r $LOCAL_OUTPUT_DIR
+        rm -r $LOCAL_DOWNLOAD_DIR
       else
         notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data saved locally for $rid" >/dev/null 2>&1 || true
       fi
