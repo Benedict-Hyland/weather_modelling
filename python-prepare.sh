@@ -244,8 +244,11 @@ process_with_python() {
       fi
 
       # (Optional) cleanup local after successful upload
-      if [[ "${CLEANUP_LOCAL_AFTER_S3:-yes}" == "yes" ]]; then
+      if [[ "${CLEANUP_LOCAL_AFTER_S3}" != "no" ]]; then
+        rm -rf "$local_out"
+        rm -rf "$local_dl"
         rm -rf "$work_root"
+        echo "Cleaned up local drive: {$work_root}"
       fi
     fi
     return 0
@@ -316,8 +319,6 @@ Processing with Python utility..." >/dev/null 2>&1 || true
       
       if [[ "$STORAGE_MODE" == "s3" ]]; then
         notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data uploaded to S3 for $rid" >/dev/null 2>&1 || true
-        rm -r $LOCAL_OUTPUT_DIR
-        rm -r $LOCAL_DOWNLOAD_DIR
         echo "Removed files from $LOCAL_OUTPUT_DIR and $LOCAL_DOWNLOAD_DIR after uploading to S3"
       else
         notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data saved locally for $rid" >/dev/null 2>&1 || true
