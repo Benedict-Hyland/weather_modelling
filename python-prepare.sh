@@ -285,9 +285,27 @@ MAX_ATTEMPTS=5
 ATTEMPT=1
 
 while (( ATTEMPT <= MAX_ATTEMPTS )); do
+  echo "==============================================================="
+  echo "Attempt $ATTEMPT of $MAX_ATTEMPTS"
+  echo "==============================================================="
 
-  run_url=$(latest_gfs) || { echo "Failed to get latest eligible run."; sleep "$INTERVAL"; continue; }
+
+  run_url=$(latest_gfs)
+  if [[ -z "$run_url" ]]; then
+    echo "Failed to get latest eligible run URL."
+    ((ATTEMPT++))
+    sleep "$INTERVAL"
+    continue
+  fi
+
   rid=$(run_id_from_url "$run_url")
+  last_id=$(read_last_id)
+
+  if [[ "$rid" == "$last_id" ]]; then
+    echo "No new eligible run detected (rid=$rid, last_id=$last_id:-none). Exiting cleanly"
+    exit 0
+  fi
+
   day="${rid:0:8}"
   run="${rid:8:2}"
   LOG_DIR="/tmp/logs/${day}/${run}"
@@ -325,51 +343,24 @@ while (( ATTEMPT <= MAX_ATTEMPTS )); do
 
   notify_ntfy "https://ntfy.sh/python_script_startup" "Started Python Weather Script"
 
-  last_id=$(read_last_id)
-
-  if [[ "$rid" != "$last_id" && -n "$rid" ]]; then
-    echo "Newer eligible run detected: $rid (prev: ${last_id:-none})"
-
-    notify_ntfy "$NTFY_NEW_RUN" "New GFS run (eligible hour): $rid
-$run_url" >/dev/null 2>&1 || true
-
-    if test_forecast_availability "$run_url"; then
-      echo "Required forecast files are present."
-    else
-      echo "Waiting for required forecast files to arrive (poll ${INTERVAL}s)…"
-      wait_for_forecasts "$rid" "$run_url"
-    fi
-
-    notify_ntfy "$NTFY_DATA_ARRIVED" "GFS data available for $rid
-Run: $run_url
-Processing with Python utility..." >/dev/null 2>&1 || true
-
-    if process_with_python "$rid"; then
-      echo "Python processing completed successfully."
-      write_state_after_processing "$run_url" "$rid"
-      echo "State updated: $STATE_FILE"
-      
-      if [[ "$STORAGE_MODE" == "s3" ]]; then
-        notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data uploaded to S3 for $rid" >/dev/null 2>&1 || true
-      else
-        notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data saved locally for $rid" >/dev/null 2>&1 || true
-      fi
-    else
-      echo "ERROR: Python processing failed for $rid."
-      notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processing FAILED for $rid" >/dev/null 2>&1 || true
-      continue
-    fi
-  
-  echo "Script successfully finished running on attempt - shutting down the system..."
-  write_log_to_s3 "$LOCAL_LOG_FILE" "$S3_LOG_PATH" "$rid"
-  exit 0
-  else
-    echo "Already completed running for this attempt ($ATTEMPT): $rid == $last_id"
-    sleep "$INTERVAL"
-    ((ATTEMPT++))
+  if ! test_forecast_availability "$run_url"; then
+    echo "Waiting for required forecast files to arrive (poll ${INTERVAL}s)…"
+    wait_for_forecasts "$rid" "$run_url"
   fi
+
+  if process_with_python "$rid"; then
+    echo "Python processing completed successfully."
+    write_state_after_processing "$run_url" "$rid"
+    echo "State updated: $STATE_FILE"
+    echo "Shutting down container cleanly."
+    exit 0
+  else
+    echo "ERROR: Python processing failed for $rid (attempt $ATTEMPT). Retrying"
+    ((ATTEMPT++))
+    sleep "$INTERVAL"
+  fi
+  
 done
 
-echo "All $MAX_ATTEMPTS attempts have failed - shutting down the system"
-
+echo "All $MAX_ATTEMPTS attempts have failed - shutting down the container"
 kill -s SIGTERM 1
