@@ -270,29 +270,61 @@ write_state_after_processing() {
   mv -f "${STATE_FILE}.tmp" "${STATE_FILE}"
 }
 
+write_log_to_s3() {
+  local log_loc="$1" s3_log_loc="$2" rid="$3"
+  echo "Uploading log for run $rid to s3"
+  aws s3 cp "$log_loc" "$s3_log_loc" --acl bucket-owner-full-control --quiet || {
+    echo "Failed to upload log to s3 for $rid"
+  }  
+}
+
 ###############################################################################
 # Main loop
 ###############################################################################
-echo "Starting GFS Python watcher. State: $STATE_FILE"
-echo "Eligible hours: 00, 06, 12, 18"
-echo "Storage mode: $STORAGE_MODE"
-if [[ "$STORAGE_MODE" == "s3" ]]; then
-  echo "S3 bucket: s3://${S3_BUCKET}/${S3_NC_PREFIX}"
-else
-  echo "Local output: $LOCAL_OUTPUT_DIR"
-  echo "Local downloads: $LOCAL_DOWNLOAD_DIR"
-fi
-echo "Python script: $PYTHON_SCRIPT_PATH"
-echo "Pressure levels: $PRESSURE_LEVELS"
-echo "Processing method: $PROCESSING_METHOD"
-echo "Interval: ${INTERVAL}s"
+MAX_ATTEMPTS=5
+ATTEMPT=1
 
-notify_ntfy "https://ntfy.sh/python_script_startup" "Started Python Weather Script"
+while (( ATTEMPT <= MAX_ATTEMPTS )); do
 
-while true; do
   run_url=$(latest_gfs) || { echo "Failed to get latest eligible run."; sleep "$INTERVAL"; continue; }
-
   rid=$(run_id_from_url "$run_url")
+  day="${rid:0:8}"
+  run="${rid:8:2}"
+  LOG_DIR="/tmp/logs/${day}/${run}"
+  JOB_ID=$(date -u +%Y%m%dT%H%M%SZ)
+  LOCAL_LOG_FILE="${LOG_DIR}/run_${JOB_ID}.log"
+  S3_LOG_PATH="s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_RAW}/${day}/${run}/run_${JOB_ID}.log"
+  mkdir -p "$LOG_DIR"
+  exec >> >(tee -a "$LOCAL_LOG_FILE") 2>&1
+
+  trap 'aws s3 cp "$LOCAL_LOG_FILE" "$S3_LOG_PATH" --acl bucket-owner-full-control --quiet' EXIT
+
+  echo "==============================================================="
+  echo "Log start for GFS run $rid"
+  echo "Started at $(date -Is)"
+  echo "Local log: $LOCAL_LOG_FILE"
+  echo "S3 log target: $S3_LOG_PATH"
+  echo "==============================================================="
+  
+  echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
+  echo "Starting GFS Python watcher. State: $STATE_FILE"
+  echo "Eligible hours: 00, 06, 12, 18"
+  echo "Storage mode: $STORAGE_MODE"
+  if [[ "$STORAGE_MODE" == "s3" ]]; then
+    echo "S3 bucket: s3://${S3_BUCKET}/${S3_NC_PREFIX}"
+  else
+    echo "Local output: $LOCAL_OUTPUT_DIR"
+    echo "Local downloads: $LOCAL_DOWNLOAD_DIR"
+  fi
+  echo "Python script: $PYTHON_SCRIPT_PATH"
+  echo "Pressure levels: $PRESSURE_LEVELS"
+  echo "Processing method: $PROCESSING_METHOD"
+  echo "Interval: ${INTERVAL}s"
+
+  echo "==============================================================="
+
+  notify_ntfy "https://ntfy.sh/python_script_startup" "Started Python Weather Script"
+
   last_id=$(read_last_id)
 
   if [[ "$rid" != "$last_id" && -n "$rid" ]]; then
@@ -319,7 +351,6 @@ Processing with Python utility..." >/dev/null 2>&1 || true
       
       if [[ "$STORAGE_MODE" == "s3" ]]; then
         notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data uploaded to S3 for $rid" >/dev/null 2>&1 || true
-        echo "Removed files from $LOCAL_OUTPUT_DIR and $LOCAL_DOWNLOAD_DIR after uploading to S3"
       else
         notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data saved locally for $rid" >/dev/null 2>&1 || true
       fi
@@ -328,8 +359,17 @@ Processing with Python utility..." >/dev/null 2>&1 || true
       notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processing FAILED for $rid" >/dev/null 2>&1 || true
       continue
     fi
-
+  
+  echo "Script successfully finished running on attempt - shutting down the system..."
+  write_log_to_s3 "$LOCAL_LOG_FILE" "$S3_LOG_PATH" "$rid"
+  exit 0
   else
+    echo "Failed to run the script on $ATTEMPT..."
     sleep "$INTERVAL"
+    ((ATTEMPT++))
   fi
 done
+
+echo "All $MAX_ATTEMPTS attempts have failed - shutting down the system"
+
+kill -s SIGTERM 1
