@@ -318,6 +318,7 @@ Processing with Python utility..." >/dev/null 2>&1 || true
         notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data uploaded to S3 for $rid" >/dev/null 2>&1 || true
         rm -r $LOCAL_OUTPUT_DIR
         rm -r $LOCAL_DOWNLOAD_DIR
+        echo "Removed files from $LOCAL_OUTPUT_DIR and $LOCAL_DOWNLOAD_DIR after uploading to S3"
       else
         notify_ntfy "$NTFY_S3_DOWNLOADED" "Python processed data saved locally for $rid" >/dev/null 2>&1 || true
       fi
