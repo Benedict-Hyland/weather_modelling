@@ -311,7 +311,7 @@ while (( ATTEMPT <= MAX_ATTEMPTS )); do
   LOG_DIR="/tmp/logs/${day}/${run}"
   JOB_ID=$(date -u +%Y%m%dT%H%M%SZ)
   LOCAL_LOG_FILE="${LOG_DIR}/run_${JOB_ID}.log"
-  S3_LOG_PATH="s3://${S3_BUCKET}/logs/${S3_DATATYPE_RAW}/${day}/${run}/run_${JOB_ID}.log"
+  S3_LOG_PATH="s3://${S3_BUCKET}/logs/${day}/${run}/run_${JOB_ID}.log"
   mkdir -p "$LOG_DIR"
   exec >> >(tee -a "$LOCAL_LOG_FILE") 2>&1
 
