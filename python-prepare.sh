@@ -297,7 +297,7 @@ while (( ATTEMPT <= MAX_ATTEMPTS )); do
   mkdir -p "$LOG_DIR"
   exec >> >(tee -a "$LOCAL_LOG_FILE") 2>&1
 
-  trap 'aws s3 cp "$LOCAL_LOG_FILE" "$S3_LOG_PATH" --acl bucket-owner-full-control --quiet' EXIT
+  trap ' write_log_to_s3 "$LOCAL_LOG_FILE" "$S3_LOG_PATH" "$rid"' EXIT
 
   echo "==============================================================="
   echo "Log start for GFS run $rid"
@@ -364,7 +364,7 @@ Processing with Python utility..." >/dev/null 2>&1 || true
   write_log_to_s3 "$LOCAL_LOG_FILE" "$S3_LOG_PATH" "$rid"
   exit 0
   else
-    echo "Failed to run the script on $ATTEMPT..."
+    echo "Already completed running for this attempt ($ATTEMPT): $rid == $last_id"
     sleep "$INTERVAL"
     ((ATTEMPT++))
   fi
