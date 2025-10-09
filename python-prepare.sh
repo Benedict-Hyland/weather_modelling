@@ -286,7 +286,7 @@ ATTEMPT=1
 
 while (( ATTEMPT <= MAX_ATTEMPTS )); do
   echo "==============================================================="
-  echo "Attempt $ATTEMPT of $MAX_ATTEMPTS"
+  echo "[$(date '+%T')] Attempt $ATTEMPT of $MAX_ATTEMPTS"
   echo "==============================================================="
 
 
