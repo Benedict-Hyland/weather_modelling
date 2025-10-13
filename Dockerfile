@@ -11,14 +11,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
+# Create clean environment with Python
+RUN micromamba create -y -n graphcast python=3.11 \
+ && micromamba clean -a -y
+
 # Fetch the env spec (or COPY your own for reproducible builds)
-RUN curl -fsSL https://raw.githubusercontent.com/Benedict-Hyland/graphcast/main/NCEP/environment.yml \
-    -o /tmp/environment.yml
+# RUN curl -fsSL https://raw.githubusercontent.com/Benedict-Hyland/graphcast/main/NCEP/environment.yml \
+#     -o /tmp/environment.yml
+
+# Run git clone to get the graphcast repository for the setup.py script
+RUN git clone https://github.com/Benedict-Hyland/graphcast.git /tmp/graphcast
 
 # Create a named env (NOT at /opt/conda)
 # This lands at /opt/conda/envs/graphcast
-RUN micromamba create -y -n graphcast -f /tmp/environment.yml \
- && micromamba clean -a -y
+WORKDIR /tmp/graphcast
+RUN micromamba run -n graphcast python -m pip install --no-cache-dir .
+# RUN micromamba create -y -n graphcast -f /tmp/environment.yml \
+#  && micromamba clean -a -y
+
+# Sanity testing the GraphCast builder
+RUN micromamba run -n graphcast python -c "import graphcast; print('GraphCast installed at:', graphcast.__file__)"
 
 # =========
 # WGrib Builder: create a named env under /opt/conda
@@ -76,28 +88,12 @@ COPY --from=mamba_builder /opt/conda/envs/graphcast /opt/env
 COPY --from=wgrib_builder /opt/wgrib2 /opt/wgrib2
 
 # Use this env by default — no activation needed
-ENV PATH="/opt/env/bin:${PATH}"
-ENV PATH="/opt/wgrib2/bin:${PATH}"
+ENV PATH="/opt/env/bin:/opt/wgrib2/bin:${PATH}"
 
-RUN python -m pip install --no-cache-dir --no-deps /graphcast
+WORKDIR /app
+COPY startup.sh /app/startup.sh
+RUN chmod +x /app/startup.sh
 
-ENV AWS_REGION=eu-west-2
-ENV AWS_SDK_LOAD_CONFIG=1
-
-# ENTRYPOINT ["/usr/bin/tini", "--"]
-# CMD ["python", "-V"]
-# CMD ["bash", "-c", "/app/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log"]
-CMD ["bash", "-c", "\
-  echo '[startup] Cloning GitHub Repos...' && \
-  git clone https://github.com/Benedict-Hyland/graphcast.git && \
-  echo '[startup] Cloned graphcast repo' && \
-  git --no-pager --git-dir=/app/graphcast/.git log -n 1 && \
-  git clone https://github.com/Benedict-Hyland/weather_modelling.git && \
-  echo '[startup] Cloned weather_modelling repo' && \
-  git --no-pager --git-dir=/app/weather_modelling/.git log -n 1 && \
-  cd weather_modelling && \
-  cp python-prepare.sh /app/python-prepare.sh && \
-  chmod +x /app/python-prepare.sh && \
-  /app/python-prepare.sh 2>&1 | tee -a /var/log/watcher.log \
-"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/app/startup.sh"]
 

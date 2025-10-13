@@ -317,7 +317,6 @@ while (( ATTEMPT <= MAX_ATTEMPTS )); do
 
   trap ' write_log_to_s3 "$LOCAL_LOG_FILE" "$S3_LOG_PATH" "$rid"' EXIT
 
-  echo "==============================================================="
   echo "Log start for GFS run $rid"
   echo "Started at $(date -Is)"
   echo "Local log: $LOCAL_LOG_FILE"
