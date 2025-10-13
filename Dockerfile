@@ -12,9 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create clean environment with Python
-RUN micromamba create -y -n graphcast \
-    --channel conda-forge \
-    python=3.11 \
+RUN micromamba create -y -n graphcast -c conda-forge \
+    python=3.11 pip setuptools wheel \
  && micromamba clean -a -y
 
 
