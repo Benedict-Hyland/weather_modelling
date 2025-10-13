@@ -12,8 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create clean environment with Python
-RUN micromamba create -y -n graphcast python=3.11 \
+RUN micromamba create -y -n graphcast \
+    --channel conda-forge \
+    python=3.11 \
  && micromamba clean -a -y
+
 
 # Fetch the env spec (or COPY your own for reproducible builds)
 # RUN curl -fsSL https://raw.githubusercontent.com/Benedict-Hyland/graphcast/main/NCEP/environment.yml \
