@@ -93,9 +93,8 @@ COPY --from=wgrib_builder /opt/wgrib2 /opt/wgrib2
 ENV PATH="/opt/env/bin:/opt/wgrib2/bin:${PATH}"
 
 WORKDIR /app
-COPY startup.sh /app/startup.sh
-RUN chmod +x /app/startup.sh
+COPY startup_forecast.sh startup_model.sh entrypoint.sh /app/
+RUN chmod +x /app/startup_forecast.sh /app/startup_model.sh /app/entrypoint.sh
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/app/startup.sh"]
-
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
+CMD ["forecast"]
