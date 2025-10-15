@@ -1,128 +1,198 @@
-# !/usr/bin/env bash
-# Script used to run a 40 timestep (40x6=240 hour) model
-# Latest Changes: 10/10/2025
-# python run_graphcast.py --input /input/filename/with/path --output /path/to/output --weights /path/to/weights --length forecast_length
+#!/usr/bin/env bash
+# Run a 40-timestep (40x6=240h) model workflow
+# Latest Changes: 2025-10-10
 
+###############################################################################
+# Config (overridable via env)
+###############################################################################
+PYTHON="${PYTHON:-python3}"
 PYTHON_SCRIPT_PATH="${PYTHON_SCRIPT_PATH:-../graphcast/NCEP/run_graphcast.py}"
-BASE="https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/"
 
-S3_BUCKET="blueoctopusdata-forecasting-silver"
-S3_MODEL="ai"
-S3_DATATYPE="netcdf"
-S3_EXTRA_ARGS=(--no-progress)
-
+# GraphCast stats (Google Cloud public bucket)
+BASE_URL="https://storage.googleapis.com/dm_graphcast/graphcast/stats"
 DIFF_STDEV_NC="diffs_stddev_by_level.nc"
 MEAN_NC="mean_by_level.nc"
 STDEV_NC="stddev_by_level.nc"
-BASE_URL="https://storage.googleapis.com/dm_graphcast/graphcast/stats/"
 
-STATS_DIR="/app/data/stats"
-INPUT_DIR="/app/data/seeding_data"
-OUTPUT_LOC="/app/data/ai_models"
+# Local dirs
+STATS_DIR="${STATS_DIR:-/app/data/stats}"
+INPUT_DIR="${INPUT_DIR:-/app/data/seeding_data}"
+OUTPUT_LOC="${OUTPUT_LOC:-/app/data/ai_models}"
+GLOB_EXT="${GLOB_EXT:-*}"   # e.g. "*.nc" or "*.grib2" (default: all files)
 
-JOB_ID=$(date -u +%Y%m%dT%H%M%SZ)
-LOG_FILE="/tmp/logs/model_${JOB_ID}.log"
+# State + logging
+STATE_FILE="${STATE_FILE:-$HOME/latest_gfs.txt}"
+JOB_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+LOG_FILE="${LOG_FILE:-/tmp/logs/model_${JOB_ID}.log}"
 
-STATE_FILE="${HOME}/latest_gfs.txt"
+# S3 upload target (where forecasts will be pushed)
+S3_BUCKET="${S3_BUCKET:-blueoctopusdata-forecasting-silver}"
+S3_MODEL="${S3_MODEL:-ai}"
+S3_DATATYPE="${S3_DATATYPE:-netcdf}"
+S3_EXTRA_ARGS=(${S3_EXTRA_ARGS[@]:---no-progress})
 
-get_data() {
-  stored_path=$(grep '^STORED=' "$STATE_FILE" | cut -d= -f2)
-  if [[ -n "$stored_path" ]]; then
-    echo "Syncing from $stored_path ..."
-    aws s3 sync "$stored_path" "$iNPUT_DIR"
+# Forecast length (hours or timesteps per your script; default 240 hours)
+FORECAST_LENGTH="${FORECAST_LENGTH:-40}"
+
+###############################################################################
+# Helpers
+###############################################################################
+mkdir -p "$(dirname "$LOG_FILE")" "$INPUT_DIR" "$OUTPUT_LOC" "$STATS_DIR"
+
+log() { printf '[%s] %s\n' "$(date -Is)" "$*" | tee -a "$LOG_FILE"; }
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || { log "FATAL: Missing command: $1"; exit 127; }
+}
+
+read_state_value() {
+  # usage: read_state_value KEY
+  local key="$1"
+  [[ -f "$STATE_FILE" ]] || { echo ""; return 0; }
+  awk -F= -v k="^${key}$" '$1 ~ k {print $2; exit}' "$STATE_FILE"
+}
+
+set_state_value() {
+  # usage: set_state_value KEY VALUE
+  local key="$1" val="$2"
+  touch "$STATE_FILE"
+  # Replace if exists; else append
+  if grep -q "^${key}=" "$STATE_FILE"; then
+    sed -i.bak -E "s|^(${key}=).*|\1${val}|" "$STATE_FILE" && rm -f "${STATE_FILE}.bak"
   else
-    echo "No stored path found in $STATE_FILE"
+    printf "%s=%s\n" "$key" "$val" >> "$STATE_FILE"
   fi
 }
 
-# Step 1: Check if the stats directory has the data
-check_stats() {
-  if [[ -d "$STATS_DIR" && -f "$STATS_DIR/$DIFF_STDEV_NC" && -f "$STATS_DIR/$MEAN_NC" && -f "$STATS_DIR/$STDEV_NC"]]; then
-    echo "Stats files exist."
-  else
-    echo "Missing stat files..."
-    download_stats()
-  fi
-}
+###############################################################################
+# 0) Preconditions
+###############################################################################
+require_cmd "$PYTHON"
+require_cmd curl
+require_cmd aws
 
-# Step 2: Download the necessary stats data
-download_stats() {
-  mkdir -p "$STATS_DIR"
-
-  curl -fsS -L -C - -o "$STATS_DIR/diffs_stddev_by_level.nc" $DIFF_STEDV_NC
-  curl -fsS -L -C - -o "$STATS_DIR/mean_by_level.nc" $MEAN_NC
-  curl -fsS -L -C - -o "$STATS_DIR/stddev_by_level.nc" $STDEV_NC
-  echo "Downloaded $DIFF_STEDV_NC"
-  echo "Downloaded $MEAN_NC"
-  echo "Downloaded $STDEV_NC"
-}
-
-# Step 3: Run the forecast for each forecast file
-run_forecast() {
-  local input="$1"
-  local forecast_length="$2"
-
-  mkdir -p "$OUTPUT_LOC"
-
-  local python_cmd="python $PYTHON_SCRIPT_PATH"
-  python_cmd="$python_cmd --input $input"
-  python_cmd="$python_cmd --output $OUTPUT_LOC"
-  python_cmd="$python_cmd --weights $STATS_DIR"
-  python_cmd="$python_cmd --length $forecast_length"
-
-  echo ""
-  echo "$python_cmd"
-  echo ""
-
-  if eval "$python_cmd"; then
-    echo "Python processing completed successfully for $input"
-  else
-    echo "FAILED PYTHON RUN for $input"
-  fi
-}
-
- 
-# =====================================================
-# MAIN PROGRAM
-# =====================================================
-#
-
-echo "Started Running Modeller..."
-
-run_url=$(latest_gfs)
-if [[ -z "$run_url" ]]; then
-  echo "Failed to get latest eligible run URL."
-  ((ATTEMPT++))
-  sleep "$INTERVAL"
-  continue
+if [[ ! -f "$PYTHON_SCRIPT_PATH" ]]; then
+  log "FATAL: Python script not found: $PYTHON_SCRIPT_PATH"
+  exit 1
 fi
 
-rid=$(run_id_from_url "$run_url")
-day="${rid:0:8}"
-run="${rid:8:2}"
-LOG_DIR="/tmp/logs/${day}/${run}"
-JOB_ID=$(date -u +%Y%m%dT%H%M%SZ)
-LOCAL_LOG_FILE="${LOG_DIR}/model_${JOB_ID}.log"
-S3_LOG_PATH="s3://${S3_BUCKET}/logs/${day}/${run}/model_${JOB_ID}.log"
-mkdir -p "$LOG_DIR"
-exec >> >(tee -a "$LOCAL_LOG_FILE") 2>&1
+if [[ ! -f "$STATE_FILE" ]]; then
+  log "FATAL: STATE_FILE not found: $STATE_FILE"
+  exit 1
+fi
 
-trap ' write_log_to_s3 "$LOCAL_LOG_FILE" "$S3_LOG_PATH" "$rid"' EXIT
+ready_flag="$(read_state_value 'ReadyToModel')"
+if [[ "$ready_flag" != "True" ]]; then
+  log "ReadyToModel is not True (current: '${ready_flag:-<unset>}'). Exiting."
+  exit 0
+fi
 
-work_dir="/app/data/${day}/${run}"
-local_out="${work_dir}/outputs"
+###############################################################################
+# 1) Ensure stats exist (download if missing)
+###############################################################################
+check_stats() {
+  if [[ -f "$STATS_DIR/$DIFF_STDEV_NC" && -f "$STATS_DIR/$MEAN_NC" && -f "$STATS_DIR/$STDEV_NC" ]]; then
+    log "Stats present in $STATS_DIR"
+    return 0
+  fi
+  return 1
+}
 
-echo "==============================================================="
-echo "Log start for AI Modeller run $rid"
-echo "Started at $(date -Is)"
-echo "Local log: $LOCAL_LOG_FILE"
-echo "S3 log target: $S3_LOG_PATH"
-echo "==============================================================="
+download_stats() {
+  log "Downloading GraphCast stats into $STATS_DIR ..."
+  local -a files=("$DIFF_STDEV_NC" "$MEAN_NC" "$STDEV_NC")
+  for f in "${files[@]}"; do
+    local url="${BASE_URL}/${f}"
+    log "GET $url"
+    if ! curl -fSL --retry 10 --retry-delay 3 -C - -o "$STATS_DIR/$f" "$url"; then
+      log "FATAL: Failed to download $f"
+      return 1
+    fi
+  done
+  return 0
+}
 
-check_stats
+if ! check_stats; then
+  download_stats || exit 2
+  check_stats || { log "FATAL: Stats still missing after download"; exit 2; }
+fi
 
-for file in /app/data/*.grib2; do
-  [[ -f "$file" ]] || continue
-  echo "Uploading $file to S3..."
-  aws s3 cp "$file" s3://mybucket/data/
+###############################################################################
+# 2) Pull input data from stored S3 path in STATE_FILE
+###############################################################################
+get_data() {
+  # Try several possible keys the state might have
+  local stored_path
+  stored_path="$(awk -F= '/^(STORED|STORED_PATH|S3_STORED_PATH)=/{print $2; exit}' "$STATE_FILE")"
+  if [[ -z "$stored_path" ]]; then
+    log "FATAL: No stored path (STORED=...) found in $STATE_FILE"
+    return 1
+  fi
+  log "Syncing seed data from $stored_path -> $INPUT_DIR"
+  aws s3 sync "$stored_path" "$INPUT_DIR" "${S3_EXTRA_ARGS[@]}"
+}
+
+get_data || exit 3
+
+# Confirm there are files to process
+shopt -s nullglob
+mapfile -t INPUT_FILES < <(find "$INPUT_DIR" -maxdepth 1 -type f -name "$GLOB_EXT" | sort)
+total_files="${#INPUT_FILES[@]}"
+if (( total_files == 0 )); then
+  log "FATAL: No input files found in $INPUT_DIR matching '$GLOB_EXT'"
+  exit 4
+fi
+log "Discovered $total_files input file(s) to process."
+
+###############################################################################
+# 3) Run forecast per file, count successes
+###############################################################################
+success_count=0
+run_forecast() {
+  local in="$1"
+  local cmd=(
+    "$PYTHON" "$PYTHON_SCRIPT_PATH"
+    --input "$in"
+    --output "$OUTPUT_LOC"
+    --weights "$STATS_DIR"
+    --length "$FORECAST_LENGTH"
+  )
+
+  log "Running: ${cmd[*]}"
+  if "${cmd[@]}"; then
+    log "SUCCESS: $in"
+    return 0
+  else
+    log "FAIL: $in"
+    return 1
+  fi
+}
+
+for f in "${INPUT_FILES[@]}"; do
+  if run_forecast "$f"; then
+    ((success_count++))
+  fi
 done
+
+log "Run summary: success=$success_count / total=$total_files"
+
+if (( success_count != total_files )); then
+  log "ERROR: Not all forecasts succeeded. Leaving ReadyToModel as '${ready_flag}'."
+  exit 5
+fi
+
+###############################################################################
+# 4) All succeeded → mark ReadyToModel=Done, then upload forecasts to S3
+###############################################################################
+set_state_value "ReadyToModel" "Done"
+log "STATE_FILE updated: ReadyToModel=Done"
+
+UPLOAD_PREFIX="s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE}/${JOB_ID}/"
+log "Uploading forecasts: $OUTPUT_LOC -> $UPLOAD_PREFIX"
+if ! aws s3 sync "$OUTPUT_LOC/" "$UPLOAD_PREFIX" "${S3_EXTRA_ARGS[@]}"; then
+  log "FATAL: aws s3 sync failed."
+  exit 6
+fi
+
+log "Upload complete. Job ${JOB_ID} finished."
+exit 0

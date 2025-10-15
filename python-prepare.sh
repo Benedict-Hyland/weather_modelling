@@ -268,6 +268,7 @@ write_state_after_processing() {
     echo "RUN_URL=${run_url}"
     echo "STORAGE_MODE=${STORAGE_MODE}"
     echo "PYTHON_PROCESSED=true"
+    echo "ReadyToModel=True"
     [[ -n "$STORED" ]] && echo "STORED=${STORED}"
     echo "UPDATED_AT=$(date -Is)"
   } > "${STATE_FILE}.tmp"
