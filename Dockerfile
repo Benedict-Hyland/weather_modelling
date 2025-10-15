@@ -8,7 +8,7 @@ SHELL ["/bin/bash", "-lc"]
 # Need root for apt
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential ca-certificates curl git \
+      build-essential ca-certificates curl git cmake gfortran libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create clean environment with Python

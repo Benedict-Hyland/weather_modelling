@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+
 MODE="${STARTUP_MODE:-}"
-if [[ $# -gt 0 ]]; then
+if [[ -z "$MODE" && $# -gt 0 ]]; then
   MODE="$1"
   shift
 fi
