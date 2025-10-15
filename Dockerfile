@@ -44,10 +44,18 @@ RUN micromamba run -n graphcast python -m pip install --no-cache-dir .
 
 # Sanity testing the GraphCast builder
 RUN micromamba run -n graphcast python - <<'PY'
-import sys
-import pygrib, cf_units, eccodes
-import graphcast
-print("OK:", sys.platform, graphcast.__version__)
+import sys, importlib
+mods = ["numpy","pandas","xarray","eccodes","pygrib","cf_units","graphcast"]
+bad = []
+for m in mods:
+    try:
+        importlib.import_module(m)
+        print(f"[OK] {m}")
+    except Exception as e:
+        print(f"[FAIL] {m}: {e}", file=sys.stderr)
+        bad.append(m)
+if bad: sys.exit(1)
+print("[READY] imports ok")
 PY
 # =========
 # WGrib Builder: create a named env under /opt/conda
