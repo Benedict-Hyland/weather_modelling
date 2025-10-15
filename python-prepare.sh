@@ -226,19 +226,22 @@ process_with_python() {
 
     if [[ "$STORAGE_MODE" == "s3" ]]; then
       # Upload outputs (NetCDFs)
-      s3_bucket_loc=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_NC}/${day}/${run}/
-      aws s3 sync "$local_out/" "${s3_bucket_loc}" \
+      s3_bucket_loc_uploads=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_NC}/${day}/${run}/
+      aws s3 sync "$local_out/" "${s3_bucket_loc_uploads}" \
         --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
-          echo "ERROR: failed to upload outputs to ${s3_bucket_loc}"
+          echo "ERROR: failed to upload outputs to ${s3_bucket_loc_uploads}"
           return 1
         }
 
+      export STORED="$s3_bucket_loc_uploads"
+      echo "Uploaded successfully to ${STORED}"
+
       # (Optional) upload downloaded GRIBs too
       if [[ "${UPLOAD_RAW_TO_S3:-no}" == "yes" ]]; then
-        s3_bucket_loc=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_RAW}/${day}/${run}
-        aws s3 sync "$local_dl/" "${s3_bucket_loc}" \
+        s3_bucket_loc_downloads=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_RAW}/${day}/${run}
+        aws s3 sync "$local_dl/" "${s3_bucket_loc_downloads}" \
           --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
-            echo "ERROR: failed to upload downloads to ${s3_bucket_loc}"
+            echo "ERROR: failed to upload downloads to ${s3_bucket_loc_downloads}"
             return 1
           }
       fi
@@ -265,6 +268,7 @@ write_state_after_processing() {
     echo "RUN_URL=${run_url}"
     echo "STORAGE_MODE=${STORAGE_MODE}"
     echo "PYTHON_PROCESSED=true"
+    [[ -n "$STORED" ]] && echo "STORED=${STORED}"
     echo "UPDATED_AT=$(date -Is)"
   } > "${STATE_FILE}.tmp"
   mv -f "${STATE_FILE}.tmp" "${STATE_FILE}"

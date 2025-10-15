@@ -17,30 +17,22 @@ STDEV_NC="stddev_by_level.nc"
 BASE_URL="https://storage.googleapis.com/dm_graphcast/graphcast/stats/"
 
 STATS_DIR="/app/data/stats"
+INPUT_DIR="/app/data/seeding_data"
 OUTPUT_LOC="/app/data/ai_models"
 
 JOB_ID=$(date -u +%Y%m%dT%H%M%SZ)
 LOG_FILE="/tmp/logs/model_${JOB_ID}.log"
 
-latest_gfs() {
-  local dates d hours h
-  dates=$(wget -qO- "$BASE" | grep -Eo 'gfs\.[0-9]{8}/' | sort -r) || return 1
-  for d in $dates; do
-    hours=$(wget -qO- "${BASE}${d}" | grep -Eo '(00|06|12|18)/' | tr -d '/' | sort -n)
-    h=$(echo "$hours" | tail -1)
-    if [[ -n "$h" ]]; then
-      printf "%s%s%02d/\n" "$BASE" "$d" "$h"
-      return 0
-    fi
-  done
-  return 1
-}
+STATE_FILE="${HOME}/latest_gfs.txt"
 
-run_id_from_url() {
-  local url="$1" ymd hh
-  ymd=$(echo "$url" | sed -n 's#.*/gfs\.\([0-9]\{8\}\)/[0-9]\{2\}/$#\1#p')
-  hh=$(echo "$url"  | awk -F'/' '{print $(NF-1)}')
-  printf "%s%02d\n" "$ymd" "$hh"
+get_data() {
+  stored_path=$(grep '^STORED=' "$STATE_FILE" | cut -d= -f2)
+  if [[ -n "$stored_path" ]]; then
+    echo "Syncing from $stored_path ..."
+    aws s3 sync "$stored_path" "$iNPUT_DIR"
+  else
+    echo "No stored path found in $STATE_FILE"
+  fi
 }
 
 # Step 1: Check if the stats directory has the data
