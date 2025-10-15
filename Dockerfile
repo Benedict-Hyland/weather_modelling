@@ -8,8 +8,12 @@ SHELL ["/bin/bash", "-lc"]
 # Need root for apt
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential ca-certificates curl git cmake gfortran libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev \
+      build-essential ca-certificates curl git cmake gfortran \
+      libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev \
+      libeccodes-dev libudunits2-dev libudunits2-data \
     && rm -rf /var/lib/apt/lists/*
+
+ENV UDUNITS2_XML_PATH=/usr/share/udunits/udunits2.xml
 
 # Create clean environment with Python
 RUN micromamba create -y -n graphcast -c conda-forge \
@@ -20,6 +24,13 @@ RUN micromamba create -y -n graphcast -c conda-forge \
 # Fetch the env spec (or COPY your own for reproducible builds)
 # RUN curl -fsSL https://raw.githubusercontent.com/Benedict-Hyland/graphcast/main/NCEP/environment.yml \
 #     -o /tmp/environment.yml
+
+# Pre-install the problem children from conda-forge so pip won't try to build them:
+#   - eccodes + pygrib + cf-units + udunits2 (+ cartopy deps) have aarch64 wheels on conda-forge
+RUN micromamba run -n graphcast micromamba install -y -c conda-forge \
+      eccodes pygrib cf-units udunits2 proj proj-data geos \
+      cartopy rtree netcdf4 pandas xarray scipy shapely matplotlib \
+ && micromamba clean -a -y
 
 # Run git clone to get the graphcast repository for the setup.py script
 RUN git clone https://github.com/Benedict-Hyland/graphcast.git /tmp/graphcast
@@ -32,8 +43,12 @@ RUN micromamba run -n graphcast python -m pip install --no-cache-dir .
 #  && micromamba clean -a -y
 
 # Sanity testing the GraphCast builder
-RUN micromamba run -n graphcast python -c "import graphcast; print('GraphCast installed at:', graphcast.__file__)"
-
+RUN micromamba run -n graphcast python - <<'PY'
+import sys
+import pygrib, cf_units, eccodes
+import graphcast
+print("OK:", sys.platform, graphcast.__version__)
+PY
 # =========
 # WGrib Builder: create a named env under /opt/conda
 # =========
@@ -69,7 +84,7 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini ca-certificates git wget curl unzip \
     libaec0 libnetcdf19 libpng16-16 libopenjp2-7 \
-    libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev \
+    # libaec-dev libpng-dev libopenjp2-7-dev libnetcdf-dev \
   && rm -rf /var/lib/apt/lists/* \
   && update-ca-certificates
 
