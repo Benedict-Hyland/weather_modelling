@@ -9,13 +9,16 @@ PYTHON="${PYTHON:-python3}"
 PYTHON_SCRIPT_PATH="${PYTHON_SCRIPT_PATH:-../graphcast/NCEP/run_graphcast.py}"
 
 # GraphCast stats (Google Cloud public bucket)
-BASE_URL="https://storage.googleapis.com/dm_graphcast/graphcast/stats"
+BASE_STATS_URL="https://storage.googleapis.com/dm_graphcast/graphcast/stats"
+BASE_PARAMS_URL="https://storage.googleapis.com/dm_graphcast/graphcast/params"
 DIFF_STDEV_NC="diffs_stddev_by_level.nc"
 MEAN_NC="mean_by_level.nc"
 STDEV_NC="stddev_by_level.nc"
 
 # Local dirs
-STATS_DIR="${STATS_DIR:-/app/data/stats}"
+WEIGHTS_DIR="${WEIGHTS_DIR:-/app/data/weights}"
+STATS_DIR="$WEIGHTS_DIR/stats"
+PARAMS_DIR="$WEIGHTS_DIR/params"
 INPUT_DIR="${INPUT_DIR:-/app/data/seeding_data}"
 OUTPUT_LOC="${OUTPUT_LOC:-/app/data/ai_models}"
 GLOB_EXT="${GLOB_EXT:-*}"   # e.g. "*.nc" or "*.grib2" (default: all files)
@@ -37,7 +40,7 @@ FORECAST_LENGTH="${FORECAST_LENGTH:-40}"
 ###############################################################################
 # Helpers
 ###############################################################################
-mkdir -p "$(dirname "$LOG_FILE")" "$INPUT_DIR" "$OUTPUT_LOC" "$STATS_DIR"
+mkdir -p "$(dirname "$LOG_FILE")" "$INPUT_DIR" "$OUTPUT_LOC" "$STATS_DIR" "$PARAMS_DIR"
 
 log() { printf '[%s] %s\n' "$(date -Is)" "$*" | tee -a "$LOG_FILE"; }
 
@@ -98,11 +101,19 @@ check_stats() {
   return 1
 }
 
+check_params() {
+  if [[ -d "$PARAMS_DIR" ]]; then
+    log "Parameter folder exists at $PARAMS_DIR"
+    return 0
+  fi
+  return 1
+}
+
 download_stats() {
   log "Downloading GraphCast stats into $STATS_DIR ..."
   local -a files=("$DIFF_STDEV_NC" "$MEAN_NC" "$STDEV_NC")
   for f in "${files[@]}"; do
-    local url="${BASE_URL}/${f}"
+    local url="${BASE_STATS_URL}/${f}"
     log "GET $url"
     if ! curl -fSL --retry 10 --retry-delay 3 -C - -o "$STATS_DIR/$f" "$url"; then
       log "FATAL: Failed to download $f"
@@ -112,9 +123,29 @@ download_stats() {
   return 0
 }
 
+download_params() {
+  log "Downloading GraphCast params from $BASE_PARAMS_URL into $PARAMS_DIR ..."
+  mkdir -p "$PARAMS_DIR"
+
+  # Recursively download all files from the public GCS directory
+  wget -r -np -nH --cut-dirs=3 -P "$PARAMS_DIR" "$BASE_PARAMS_URL/" || {
+    log "FATAL: Failed to download parameters from $BASE_PARAMS_URL"
+    return 1
+  }
+
+  log "All params downloaded successfully into $PARAMS_DIR"
+  return 0
+}
+
+
 if ! check_stats; then
   download_stats || exit 2
   check_stats || { log "FATAL: Stats still missing after download"; exit 2; }
+fi
+
+if ! check_params; then
+  download_params || exit 2
+  check_params || { log "FATAL: Params still missing after download"; exit 2; }
 fi
 
 ###############################################################################
@@ -155,7 +186,7 @@ run_forecast() {
     "$PYTHON" "$PYTHON_SCRIPT_PATH"
     --input "$in"
     --output "$OUTPUT_LOC"
-    --weights "$STATS_DIR"
+    --weights "$WEIGHTS_DIR"
     --length "$FORECAST_LENGTH"
   )
 
