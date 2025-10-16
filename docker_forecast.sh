@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-IMAGE_NAME="hiddenbenedict/blueoctopus:v1.1.1"
+IMAGE_NAME="hiddenbenedict/blueoctopusforecasts:latest"
 CONTAINER_NAME="forecaster"
 ENV_ROLE="forecast"
 LOCAL_LOGS="/home/ec2-user/logs"
