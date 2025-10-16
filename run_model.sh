@@ -124,12 +124,13 @@ get_data() {
   # Try several possible keys the state might have
   local stored_path
   stored_path="$(awk -F= '/^(STORED|STORED_PATH|S3_STORED_PATH)=/{print $2; exit}' "$STATE_FILE")"
-  if [[ -z "$stored_path" ]]; then
+  final_path="${stored_path%/}/merged_forecasts"
+  if [[ -z "$final_path" ]]; then
     log "FATAL: No stored path (STORED=...) found in $STATE_FILE"
     return 1
   fi
-  log "Syncing seed data from $stored_path -> $INPUT_DIR"
-  aws s3 sync "$stored_path" "$INPUT_DIR" "${S3_EXTRA_ARGS[@]}"
+  log "Syncing seed data from $final_path -> $INPUT_DIR"
+  aws s3 sync "$final_path" "$INPUT_DIR" "${S3_EXTRA_ARGS[@]}"
 }
 
 get_data || exit 3
