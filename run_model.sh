@@ -106,19 +106,11 @@ check_stats() {
 }
 
 check_params() {
-  if [[ -d "$PARAMS_DIR" ]]; then
-    # Check if there is at least one non-directory file inside
-    if find "$PARAMS_DIR" -mindepth 1 -type f -print -quit | grep -q .; then
-      log "Parameter folder exists and contains files: $PARAMS_DIR"
-      return 0
-    else
-      log "Parameter folder exists but is empty: $PARAMS_DIR"
-      return 1
-    fi
-  else
-    log "Parameter folder does not exist: $PARAMS_DIR"
-    return 1
+  if [[ -f "$PARAMS_DIR/$MODEL_OPERATIONAL" && -f "$PARAMS_DIR/$MODEL_FULL" && -f "$PARAMS_DIR/$MODEL_SMALL" ]]; then
+    log "Params present in $PARAMS_DIR"
+    return 0
   fi
+  return 1
 }
 
 
