@@ -103,11 +103,20 @@ check_stats() {
 
 check_params() {
   if [[ -d "$PARAMS_DIR" ]]; then
-    log "Parameter folder exists at $PARAMS_DIR"
-    return 0
+    # Check if there is at least one non-directory file inside
+    if find "$PARAMS_DIR" -type f -mindepth 1 -print -quit | grep -q .; then
+      log "Parameter folder exists and contains files: $PARAMS_DIR"
+      return 0
+    else
+      log "Parameter folder exists but is empty: $PARAMS_DIR"
+      return 1
+    fi
+  else
+    log "Parameter folder does not exist: $PARAMS_DIR"
+    return 1
   fi
-  return 1
 }
+
 
 download_stats() {
   log "Downloading GraphCast stats into $STATS_DIR ..."
