@@ -11,6 +11,7 @@ CONTAINER_DIR="/root"
 CONTAINER_STATS="/app/data/stats"
 
 mkdir -p "$LOCAL_LOGS"
+mkdir -p "$LOCAL_STATS"
 
 docker run -it --rm \
   --name "$CONTAINER_NAME" \
