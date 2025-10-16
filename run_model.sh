@@ -14,6 +14,10 @@ BASE_PARAMS_URL="https://storage.googleapis.com/dm_graphcast/graphcast/params"
 DIFF_STDEV_NC="diffs_stddev_by_level.nc"
 MEAN_NC="mean_by_level.nc"
 STDEV_NC="stddev_by_level.nc"
+MODEL_OPERATIONAL="GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz"
+MODEL_FULL="GraphCast - ERA5 1979-2017 - resolution 0.25 - pressure levels 37 - mesh 2to6 - precipitation input and output.npz"
+MODEL_SMALL="GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz"
+
 
 # Local dirs
 WEIGHTS_DIR="${WEIGHTS_DIR:-/app/data/weights}"
@@ -104,7 +108,7 @@ check_stats() {
 check_params() {
   if [[ -d "$PARAMS_DIR" ]]; then
     # Check if there is at least one non-directory file inside
-    if find "$PARAMS_DIR" -type f -mindepth 1 -print -quit | grep -q .; then
+    if find "$PARAMS_DIR" -mindepth 1 -type f -print -quit | grep -q .; then
       log "Parameter folder exists and contains files: $PARAMS_DIR"
       return 0
     else
@@ -133,16 +137,18 @@ download_stats() {
 }
 
 download_params() {
-  log "Downloading GraphCast params from $BASE_PARAMS_URL into $PARAMS_DIR ..."
+  log "Downloading GraphCast params into $PARAMS_DIR ..."
   mkdir -p "$PARAMS_DIR"
 
-  # Recursively download all files from the public GCS directory
-  wget -r -np -nH --cut-dirs=3 -P "$PARAMS_DIR" "$BASE_PARAMS_URL/" || {
-    log "FATAL: Failed to download parameters from $BASE_PARAMS_URL"
-    return 1
-  }
-
-  log "All params downloaded successfully into $PARAMS_DIR"
+  local -a files=("$MODEL_OPERATIONAL" "$MODEL_FULL" "$MODEL_SMALL")
+  for f in "${files[@]}"; do
+    local url="${BASE_PARAMS_URL%/}/$f"
+    log "GET $url"
+    if ! curl -fSL --retry 10 --retry-delay 3 -C - -o "$PARAMS_DIR/$f" "$url"; then
+      log "FATAL: Failed to download: $f"
+      return 1
+    fi
+  done
   return 0
 }
 
