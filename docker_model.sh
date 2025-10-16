@@ -6,16 +6,16 @@ IMAGE_NAME="hiddenbenedict/blueoctopusforecasts:latest"
 CONTAINER_NAME="modeller"
 ENV_ROLE="model"
 LOCAL_LOGS="/home/ec2-user/logs"
-LOCAL_STATS="/home/ec2-user/data/stats"
+LOCAL_WEIGHTS="/home/ec2-user/data/weights"
 CONTAINER_DIR="/root"
-CONTAINER_STATS="/app/data/stats"
+CONTAINER_WEIGHTS="/app/data/weights"
 
 mkdir -p "$LOCAL_LOGS"
-mkdir -p "$LOCAL_STATS"
+mkdir -p "$LOCAL_WEIGHTS"
 
 docker run -it --rm \
   --name "$CONTAINER_NAME" \
   -v "$LOCAL_LOGS":"$CONTAINER_DIR" \
-  -v "$LOCAL_STATS":"$CONTAINER_STATS" \
+  -v "$LOCAL_WEIGHTS":"$CONTAINER_WEIGHTS" \
   -e "STARTUP_MODE"="$ENV_ROLE" \
   "$IMAGE_NAME"
