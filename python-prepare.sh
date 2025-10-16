@@ -17,7 +17,7 @@ NTFY_S3_DOWNLOADED="https://ntfy.sh/gfs_downloaded_s3"
 
 STORAGE_MODE="${STORAGE_MODE:-s3}"
 
-S3_BUCKET="blueoctopusdata-forecasting-bronze"
+S3_BUCKET="blueoctopusforecasting-bronze"
 S3_MODEL="gfs"
 S3_DATATYPE_RAW="grib"
 S3_DATATYPE_NC="netcdf"
@@ -238,7 +238,7 @@ process_with_python() {
 
       # (Optional) upload downloaded GRIBs too
       if [[ "${UPLOAD_RAW_TO_S3:-no}" == "yes" ]]; then
-        s3_bucket_loc_downloads=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_RAW}/${day}/${run}
+        s3_bucket_loc_downloads=s3://${S3_BUCKET}/${S3_MODEL}/${S3_DATATYPE_RAW}/${day}/${run}/
         aws s3 sync "$local_dl/" "${s3_bucket_loc_downloads}" \
           --only-show-errors "${S3_EXTRA_ARGS[@]}" || {
             echo "ERROR: failed to upload downloads to ${s3_bucket_loc_downloads}"

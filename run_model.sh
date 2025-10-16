@@ -26,7 +26,7 @@ JOB_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG_FILE="${LOG_FILE:-/tmp/logs/model_${JOB_ID}.log}"
 
 # S3 upload target (where forecasts will be pushed)
-S3_BUCKET="${S3_BUCKET:-blueoctopusdata-forecasting-silver}"
+S3_BUCKET="${S3_BUCKET:-blueoctopusforecasting-silver}"
 S3_MODEL="${S3_MODEL:-ai}"
 S3_DATATYPE="${S3_DATATYPE:-netcdf}"
 S3_EXTRA_ARGS=(${S3_EXTRA_ARGS[@]:---no-progress})
