@@ -14,9 +14,9 @@ BASE_PARAMS_URL="https://storage.googleapis.com/dm_graphcast/graphcast/params"
 DIFF_STDEV_NC="diffs_stddev_by_level.nc"
 MEAN_NC="mean_by_level.nc"
 STDEV_NC="stddev_by_level.nc"
-MODEL_OPERATIONAL="GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz"
-MODEL_FULL="GraphCast - ERA5 1979-2017 - resolution 0.25 - pressure levels 37 - mesh 2to6 - precipitation input and output.npz"
-MODEL_SMALL="GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz"
+MODEL_OPERATIONAL="GraphCast_operational%20-%20ERA5-HRES%201979-2021%20-%20resolution%200.25%20-%20pressure%20levels%2013%20-%20mesh%202to6%20-%20precipitation%20output%20only.npz"
+MODEL_FULL="GraphCast%20-%20ERA5%201979-2017%20-%20resolution%200.25%20-%20pressure%20levels%2037%20-%20mesh%202to6%20-%20precipitation%20input%20and%20output.npz"
+MODEL_SMALL="GraphCast_small%20-%20ERA5%201979-2015%20-%20resolution%201.0%20-%20pressure%20levels%2013%20-%20mesh%202to5%20-%20precipitation%20input%20and%20output.npz"
 
 
 # Local dirs
