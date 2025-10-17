@@ -112,48 +112,28 @@ check_params() {
   return 1
 }
 
+check_weights() {
+  # Both stats and params must be present
+  if check_stats && check_params; then
+    log "All weights (stats + params) present"
+    return 0
+  fi
+  log "Weights incomplete: one or more components missing"
+  return 1
+}
 
 download_weights() {
-  log "Downloading GraphCast stats into $STATS_DIR ..."
-  local -a files=("$DIFF_STDEV_NC" "$MEAN_NC" "$STDEV_NC")
-  for f in "${files[@]}"; do
-    local url="${BASE_STATS_URL}/${f}"
-    log "GET $url"
-    if ! aws s3 sync --no-sign-request "s3://noaa-nws-graphcastgfs-pds/graphcastgfs_weights/graphcastgfs_weights/"; then
-      log "FATAL: Failed to download the weights directory"
-      return 1
-    fi
-  done
+  log "Downloading GraphCast stats and params into $WEIGHTS_DIR ..."
+  if ! aws s3 cp --no-sign-request --recursive "s3://noaa-nws-graphcastgfs-pds/graphcastgfs_weights/" "$WEIGHTS_DIR"; then
+    log "FATAL: Failed to download the weights directory"
+    return 1
+  fi
   return 0
 }
 
-download_params() {
-  log "Downloading GraphCast params into $PARAMS_DIR ..."
-  mkdir -p "$PARAMS_DIR"
-  local -a files=("$MODEL_OPERATIONAL" "$MODEL_FULL" "$MODEL_SMALL")
-  for f in "${files[@]}"; do
-    # Encode spaces as %20 for the URL (and only spaces—this keeps it simple and readable)
-    local encoded_f="${f// /%20}"
-    local url="${BASE_PARAMS_URL%/}/$encoded_f"
-    log "GET $url"
-    if ! curl -fSL --retry 10 --retry-delay 3 -C - -o "$PARAMS_DIR/$f" "$url"; then
-      log "FATAL: Failed to download: $f"
-      return 1
-    fi
-  done
-  log "All parameter files downloaded successfully into $PARAMS_DIR"
-  return 0
-}
-
-
-if ! check_stats; then
-  download_stats || exit 2
-  check_stats || { log "FATAL: Stats still missing after download"; exit 2; }
-fi
-
-if ! check_params; then
-  download_params || exit 2
-  check_params || { log "FATAL: Params still missing after download"; exit 2; }
+if ! check_weights; then
+  download_weights || exit 2
+  check_weights || { log "FATAL: Weights still missing after download"; exit 2; }
 fi
 
 ###############################################################################
