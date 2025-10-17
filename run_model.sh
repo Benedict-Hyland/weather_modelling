@@ -14,9 +14,8 @@ BASE_PARAMS_URL="https://storage.googleapis.com/dm_graphcast/graphcast/params"
 DIFF_STDEV_NC="diffs_stddev_by_level.nc"
 MEAN_NC="mean_by_level.nc"
 STDEV_NC="stddev_by_level.nc"
-MODEL_OPERATIONAL="GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz"
-MODEL_FULL="GraphCast - ERA5 1979-2017 - resolution 0.25 - pressure levels 37 - mesh 2to6 - precipitation input and output.npz"
-MODEL_SMALL="GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz"
+MODEL_GFS_FINETUNED="GCGFSv2_finetuned - GDAS - ERA5 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz"
+MODEL_PARAMS="params_gdas-gdas_epoch_30.npz"
 
 
 # Local dirs
@@ -106,7 +105,7 @@ check_stats() {
 }
 
 check_params() {
-  if [[ -f "$PARAMS_DIR/$MODEL_OPERATIONAL" && -f "$PARAMS_DIR/$MODEL_FULL" && -f "$PARAMS_DIR/$MODEL_SMALL" ]]; then
+  if [[ -f "$PARAMS_DIR/$MODEL_GFS_FINETUNED" && -f "$PARAMS_DIR/$MODEL_PARAMS" ]]; then
     log "Params present in $PARAMS_DIR"
     return 0
   fi
@@ -114,14 +113,14 @@ check_params() {
 }
 
 
-download_stats() {
+download_weights() {
   log "Downloading GraphCast stats into $STATS_DIR ..."
   local -a files=("$DIFF_STDEV_NC" "$MEAN_NC" "$STDEV_NC")
   for f in "${files[@]}"; do
     local url="${BASE_STATS_URL}/${f}"
     log "GET $url"
-    if ! curl -fSL --retry 10 --retry-delay 3 -C - -o "$STATS_DIR/$f" "$url"; then
-      log "FATAL: Failed to download $f"
+    if ! aws s3 sync --no-sign-request "s3://noaa-nws-graphcastgfs-pds/graphcastgfs_weights/graphcastgfs_weights/"; then
+      log "FATAL: Failed to download the weights directory"
       return 1
     fi
   done
