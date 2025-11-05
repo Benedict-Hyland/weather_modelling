@@ -27,7 +27,20 @@ S3_DATATYPE_NC="netcdf"
 LOCAL_OUTPUT_DIR="${LOCAL_OUTPUT_DIR:-./outputs}"
 LOCAL_DOWNLOAD_DIR="${LOCAL_DOWNLOAD_DIR:-./downloads}"
 
-PYTHON_SCRIPT_PATH="${PYTHON_SCRIPT_PATH:-../graphcast/NCEP/gdas_utility.py}"
+# Resolve path to this script to make relative paths robust regardless of CWD
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_PY_PATH="${SCRIPT_DIR}/../graphcast/NCEP/gdas_utility.py"
+# Allow override via env, otherwise prefer the freshly cloned /app/graphcast tree
+PYTHON_SCRIPT_PATH="${PYTHON_SCRIPT_PATH:-${DEFAULT_PY_PATH}}"
+# Fallbacks in case caller CWD makes '../graphcast' resolve outside /app
+if [[ ! -f "$PYTHON_SCRIPT_PATH" ]]; then
+  if [[ -f "/app/graphcast/NCEP/gdas_utility.py" ]]; then
+    PYTHON_SCRIPT_PATH="/app/graphcast/NCEP/gdas_utility.py"
+  elif [[ -f "/graphcast/NCEP/gdas_utility.py" ]]; then
+    # Last resort: baked-in image copy (not preferred)
+    PYTHON_SCRIPT_PATH="/graphcast/NCEP/gdas_utility.py"
+  fi
+fi
 KEEP_DOWNLOADS="${KEEP_DOWNLOADS:-yes}"
 
 # Polling interval (seconds)

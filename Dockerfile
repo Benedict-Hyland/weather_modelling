@@ -100,7 +100,9 @@ RUN curl -fsSl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -
   && unzip awscliv2.zip \
   && ./aws/install
 
-RUN git clone https://github.com/Benedict-Hyland/graphcast.git /graphcast
+# Intentionally do NOT bake a working tree of graphcast into the image.
+# We clone the latest repo at runtime in startup_forecast.sh to avoid ambiguity
+# between a baked copy and the live repo.
 
 RUN mkdir -p /app
 WORKDIR /app
